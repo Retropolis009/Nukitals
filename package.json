@@ -1,0 +1,7 @@
+{
+  "name": "nutikals-storefront",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nutikals storefront and cash-on-delivery order API",
+  "scripts": { "start": "node server.js" }
+}
