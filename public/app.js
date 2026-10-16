@@ -6,6 +6,8 @@ let cartReady = false;
 let cartSync = Promise.resolve();
 let activeProduct = null;
 let detailQuantity = 1;
+let deliveryFee = 350;
+const freeShippingThreshold = 5000;
 
 function saveCart() {
   localStorage.setItem("nutikals-cart", JSON.stringify(cart));
@@ -75,12 +77,13 @@ function renderCart() {
     }).join("") : `<div class="empty-bag"><span>✳</span><p>Your bag is taking a little breather.</p><a href="/#shop" class="text-link">Explore the collection →</a></div>`;
   });
   const subtotal = cartSubtotal();
-  const shipping = !cart.length ? 0 : subtotal >= 5000 ? 0 : 350;
+  const shipping = !cart.length ? 0 : subtotal >= freeShippingThreshold ? 0 : deliveryFee;
+  document.querySelectorAll("[data-delivery-fee]").forEach(el => el.textContent = money(deliveryFee));
   document.querySelectorAll("[data-cart-total]").forEach(el => el.textContent = money(subtotal));
   document.querySelectorAll("[data-cart-shipping]").forEach(el => el.textContent = !cart.length ? "—" : shipping === 0 ? "Free" : money(shipping));
   document.querySelectorAll("[data-cart-grand-total]").forEach(el => el.textContent = money(subtotal + shipping));
-  document.querySelectorAll("[data-cart-shipping-message]").forEach(el => el.textContent = subtotal >= 5000 ? "You have unlocked free shipping." : `Spend ${money(5000 - subtotal)} more to unlock free shipping.`);
-  document.querySelectorAll("[data-cart-shipping-progress]").forEach(el => el.style.width = `${Math.min(100, subtotal / 5000 * 100)}%`);
+  document.querySelectorAll("[data-cart-shipping-message]").forEach(el => el.textContent = subtotal >= freeShippingThreshold ? "You have unlocked free shipping." : `Spend ${money(freeShippingThreshold - subtotal)} more to unlock free shipping.`);
+  document.querySelectorAll("[data-cart-shipping-progress]").forEach(el => el.style.width = `${Math.min(100, subtotal / freeShippingThreshold * 100)}%`);
   document.querySelectorAll("[data-cart-change]").forEach(button => button.onclick = () => changeCart(button.dataset.id, Number(button.dataset.cartChange)));
   document.querySelectorAll("[data-cart-remove]").forEach(button => button.onclick = () => { cart = cart.filter(item => item.id !== button.dataset.cartRemove); saveCart(); });
   renderCheckoutSummary();
@@ -162,9 +165,10 @@ function renderCheckoutSummary() {
   const container = document.querySelector("[data-summary-items]"); if (!container) return;
   container.innerHTML = cart.map(line => { const p = getProduct(line.id); if (!p) return ""; return `<div class="summary-product"><div class="summary-thumb"><img src="${safe(p.image)}" alt=""><span>${line.quantity}</span></div><div class="summary-product-name"><strong>${safe(p.name)}</strong><span>${safe(p.size)}</span></div><strong>${money(p.price * line.quantity)}</strong></div>`; }).join("");
   const count = cartCount();
-  document.querySelector("[data-summary-count]").textContent = `${count} ${count === 1 ? "item" : "items"}`;
+  const countLabel = document.querySelector("[data-summary-count]");
+  if (countLabel) countLabel.textContent = `${count} ${count === 1 ? "item" : "items"}`;
   document.querySelector("[data-summary-subtotal]").textContent = money(cartSubtotal());
-  const shipping = !cart.length ? 0 : cartSubtotal() >= 5000 ? 0 : 350;
+  const shipping = !cart.length ? 0 : cartSubtotal() >= freeShippingThreshold ? 0 : deliveryFee;
   document.querySelector("[data-summary-shipping]").textContent = !cart.length ? "—" : shipping === 0 ? "Free" : money(shipping);
   document.querySelector("[data-summary-total]").textContent = money(cartSubtotal() + shipping);
   renderPaymentInstructions(cartSubtotal() + shipping);
@@ -184,9 +188,16 @@ function renderPaymentInstructions(total) {
   instructions.hidden = method !== "jazzcash";
   document.querySelector("[data-jazzcash-amount]").textContent = money(total);
 }
+async function refreshStoreSettings() {
+  const response = await fetch("/api/store-settings", { cache: "no-store" });
+  if (!response.ok) throw new Error("Store settings unavailable");
+  const settings = await response.json();
+  deliveryFee = Number(settings.deliveryFee);
+  if (!Number.isFinite(deliveryFee)) throw new Error("Invalid delivery fee");
+}
 function setupCheckout() {
   const form = document.querySelector("[data-checkout-form]"); if (!form) return;
-  form.querySelector('[name="paymentMethod"]')?.addEventListener("change", () => renderPaymentInstructions(cartSubtotal() + (!cart.length ? 0 : cartSubtotal() >= 5000 ? 0 : 350)));
+  form.querySelector('[name="paymentMethod"]')?.addEventListener("change", () => renderPaymentInstructions(cartSubtotal() + (!cart.length ? 0 : cartSubtotal() >= freeShippingThreshold ? 0 : deliveryFee)));
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const message = document.querySelector("[data-form-message]"); const button = document.querySelector("[data-place-order]");
@@ -214,9 +225,15 @@ document.querySelectorAll("[data-cart-open]").forEach(button => button.addEventL
 document.querySelectorAll("[data-cart-close]").forEach(button => button.addEventListener("click", () => toggleDrawer(false)));
 document.addEventListener("keydown", event => { if (event.key === "Escape") toggleDrawer(false); });
 document.querySelectorAll("[data-year]").forEach(el => el.textContent = new Date().getFullYear());
+window.addEventListener("focus", async () => {
+  try { await refreshStoreSettings(); renderCart(); }
+  catch { /* The last known fee remains visible; the server validates every order total. */ }
+});
 
-fetch("/api/products").then(response => { if (!response.ok) throw new Error("Collection unavailable"); return response.json(); }).then(data => {
-  products = data; renderHome(); renderProduct(); setupCheckout(); setupCarousel(); return loadCart();
+fetch("/api/products").then(response => { if (!response.ok) throw new Error("Collection unavailable"); return response.json(); }).then(async data => {
+  products = data;
+  try { await refreshStoreSettings(); } catch { /* Keep the default fee while the store settings endpoint is unavailable. */ }
+  renderHome(); renderProduct(); setupCheckout(); setupCarousel(); return loadCart();
 }).catch(() => {
   const grid = document.querySelector("[data-product-grid]"); if (grid) grid.innerHTML = '<p class="load-error">The collection could not load. Please refresh the page.</p>';
   const title = document.querySelector("[data-product-title]"); if (title) title.textContent = "Please refresh to view this product.";

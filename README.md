@@ -21,11 +21,11 @@ The public catalog and admin product editor use the `products` table with `id`, 
 
 Run the SQL in `db/migrations/001_guest_carts.sql` once against the database to create guest cart tables. Guest carts are tied to an HTTP-only browser cookie and last 90 days; they do not sync across devices. Set `CART_COOKIE_SECRET` to a long random value (the app falls back to `DB_PASSWORD` if it is unset).
 
-Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, and `EMAIL_TO` for order emails. The store inbox receives a message for every order. A customer confirmation is sent when the customer supplies an email address. JazzCash remains a manual transfer; emails say to verify it separately. Email delivery errors are logged and do not cancel an order.
+Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM`, and `EMAIL_TO` for order emails. The store inbox receives a message for every order, and the customer receives a confirmation at the required checkout email address. JazzCash remains a manual transfer; emails say to verify it separately. Email delivery errors are logged and do not cancel an order.
 
 The admin API uses HTTP Basic credentials over HTTPS in production. Do not expose the admin route over plain HTTP on a public network.
 
-Run `db/migrations/002_orders.sql` once against the database to create `orders` and `order_items`. The dashboard includes recent orders, customer and delivery details, line items, and controls for order and payment status. New orders and their line items are saved in a single PostgreSQL transaction.
+Run `db/migrations/002_orders.sql` once against the database to create `orders` and `order_items`. Store settings are created automatically the first time the app reads or saves delivery pricing; `db/migrations/003_store_settings.sql` is also available for migration-managed deployments. The dashboard includes recent orders, customer and delivery details, line items, controls for order and payment status, and a delivery fee setting.
 
 ## Store behavior
 
@@ -34,7 +34,7 @@ Run `db/migrations/002_orders.sql` once against the database to create `orders` 
 - Checkout supports cash on delivery and manual JazzCash instructions. It does not process card details or verify JazzCash transfers.
 - Orders and order items are stored in PostgreSQL.
 - Prices are checked against the PostgreSQL catalog when an order is placed.
-- Shipping costs Rs. 350 below Rs. 5,000 and is free at Rs. 5,000 and above.
+- Delivery costs Rs. 350 by default below Rs. 5,000 and is free at Rs. 5,000 and above. Admins can change the delivery fee in the dashboard.
 - JazzCash checkout records a manual payment request to 0330 8348288. It does not initiate or confirm a transfer.
 - Use HTTPS and set privacy and retention policies before launch.
 

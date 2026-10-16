@@ -9,6 +9,27 @@ const PUBLIC = path.join(__dirname, "public");
 const PORT = Number(process.env.PORT || 3000);
 const CART_COOKIE = "nutikals_cart";
 const CART_SECRET = process.env.CART_COOKIE_SECRET || process.env.DB_PASSWORD || "";
+const FREE_SHIPPING_THRESHOLD = 5000;
+let storeSettingsReady;
+
+async function ensureStoreSettings() {
+  if (!storeSettingsReady) {
+    storeSettingsReady = (async () => {
+      await pool.query(`CREATE TABLE IF NOT EXISTS store_settings (
+        key varchar(80) PRIMARY KEY,
+        value numeric(12, 2) NOT NULL CHECK (value >= 0)
+      )`);
+      await pool.query("INSERT INTO store_settings (key, value) VALUES ('delivery_fee', 350) ON CONFLICT (key) DO NOTHING");
+    })().catch(error => { storeSettingsReady = null; throw error; });
+  }
+  return storeSettingsReady;
+}
+
+async function getDeliveryFee(db = pool) {
+  await ensureStoreSettings();
+  const result = await db.query("SELECT value FROM store_settings WHERE key = 'delivery_fee'");
+  return Number(result.rows[0]?.value ?? 350);
+}
 
 function clean(value, max = 180) {
   return String(value || "").trim().replace(/[<>\u0000-\u001f]/g, "").slice(0, max);
@@ -156,7 +177,10 @@ async function createOrder(body = {}, cartId) {
   const address = clean(customer.address, 500);
   const city = clean(customer.city, 100);
   const postalCode = clean(customer.postalCode, 20);
-  if (!name || !phone || !address || !city) throw new Error("Please complete your name, phone, city and delivery address.");
+  const email = clean(customer.email, 120);
+  const note = clean(body.note, 300);
+  if (!name || !phone || !address || !city || !postalCode || !note || !email || !["cash_on_delivery", "jazzcash"].includes(body.paymentMethod)) throw new Error("Please complete every checkout field.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -171,19 +195,20 @@ async function createOrder(body = {}, cartId) {
       return { id: product.id, name: product.name, price, quantity: line.quantity, lineTotal: price * line.quantity };
     });
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-    const shipping = subtotal >= 5000 ? 0 : 350;
+    const deliveryFee = await getDeliveryFee(client);
+    const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : deliveryFee;
     const paymentMethod = body.paymentMethod === "jazzcash" ? "jazzcash_manual" : "cash_on_delivery";
     const order = {
       id: `NK-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
       createdAt: new Date().toISOString(),
-      customer: { name, phone, city, postalCode, address, email: clean(customer.email, 120) },
+      customer: { name, phone, city, postalCode, address, email },
       items,
       subtotal,
       shipping,
       total: subtotal + shipping,
       paymentMethod,
       paymentStatus: paymentMethod === "cash_on_delivery" ? "due_on_delivery" : "pending",
-      note: clean(body.note, 300),
+      note,
       status: "new"
     };
     await client.query(`INSERT INTO orders
@@ -217,6 +242,11 @@ app.get("/api/products", async (req, res) => {
   res.json(result.rows.map(presentProduct));
 });
 
+app.get("/api/store-settings", async (req, res) => {
+  try { res.json({ deliveryFee: await getDeliveryFee(), freeShippingThreshold: FREE_SHIPPING_THRESHOLD }); }
+  catch (error) { console.error("Could not load store settings:", error); res.status(503).json({ error: "Delivery pricing is temporarily unavailable. Please try again shortly." }); }
+});
+
 app.get("/api/cart", async (req, res) => {
   const cartId = await getCartId(req, res);
   const result = await pool.query("SELECT product_id AS id, quantity FROM cart_items WHERE cart_id = $1 ORDER BY product_id", [cartId]);
@@ -241,6 +271,26 @@ adminRouter.use(requireAdmin);
 adminRouter.get("/products", async (req, res) => {
   const result = await pool.query("SELECT id, name, price, description, image_url FROM products ORDER BY id");
   res.json(result.rows);
+});
+
+adminRouter.get("/settings", async (req, res) => {
+  try { res.json({ deliveryFee: await getDeliveryFee(), freeShippingThreshold: FREE_SHIPPING_THRESHOLD }); }
+  catch (error) { console.error("Could not load store settings:", error); res.status(503).json({ error: "Could not load the delivery fee. Check the database connection and try again." }); }
+});
+
+adminRouter.put("/settings/delivery-fee", async (req, res) => {
+  const fee = Number(req.body?.deliveryFee);
+  if (!Number.isFinite(fee) || fee < 0 || fee > 1000000 || Math.round(fee * 100) !== fee * 100) {
+    return res.status(400).json({ error: "Enter a delivery fee from Rs. 0 to Rs. 1,000,000, with up to two decimal places." });
+  }
+  try {
+    await ensureStoreSettings();
+    await pool.query("INSERT INTO store_settings (key, value) VALUES ('delivery_fee', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", [fee.toFixed(2)]);
+    res.json({ deliveryFee: fee, freeShippingThreshold: FREE_SHIPPING_THRESHOLD });
+  } catch (error) {
+    console.error("Could not save delivery fee:", error);
+    res.status(503).json({ error: "Could not save the delivery fee. Check the database connection and permissions, then try again." });
+  }
 });
 
 adminRouter.post("/products", async (req, res) => {

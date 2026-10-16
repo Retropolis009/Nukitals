@@ -4,15 +4,10 @@ const pool = require("./db");
 async function testConnection() {
     try {
         const result = await pool.query(`
-            SELECT
-                current_database() AS database,
-                current_user AS username,
-                COUNT(*) AS product_count
-            FROM products
+            SELECT (SELECT COUNT(*) FROM products) AS product_count
         `);
 
-        console.log("Database connection successful!");
-        console.log(result.rows[0]);
+        console.log(`Database connection successful. Products: ${result.rows[0].product_count}`);
     } catch (error) {
         console.error("Database connection failed:", error.message);
     } finally {

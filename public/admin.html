@@ -25,6 +25,15 @@
       <nav class="tabs" aria-label="Admin sections"><button class="active" data-tab="products">Products</button><button data-tab="orders">Orders <span id="new-order-count"></span></button></nav>
       <section id="products-view">
       <section class="panel">
+        <h2>Delivery fee</h2>
+        <p class="muted">Set the delivery charge for orders below Rs. 5,000. Orders at or above Rs. 5,000 receive free delivery.</p>
+        <form id="delivery-fee-form" class="grid">
+          <div class="field"><label for="delivery-fee">Delivery fee (Rs.)</label><input id="delivery-fee" type="number" min="0" max="1000000" step="0.01" required></div>
+          <div class="field"><label>Free delivery threshold</label><input id="free-shipping-threshold" value="Rs. 5,000" disabled></div>
+          <div class="field full"><div class="actions" style="margin-top:0"><button id="save-delivery-fee">Save delivery fee</button><span id="delivery-fee-message" class="help" role="status"></span></div></div>
+        </form>
+      </section>
+      <section class="panel">
         <h2 id="form-title">Add a product</h2>
         <form id="product-form">
           <div class="grid">
@@ -55,6 +64,7 @@
     const productForm = document.querySelector("#product-form");
     const productList = document.querySelector("#product-list");
     const orderList = document.querySelector("#order-list");
+    const deliveryFeeForm = document.querySelector("#delivery-fee-form");
     let authHeader = "";
     let editingId = null;
     let products = [];
@@ -133,6 +143,14 @@
       try { orders = await api(`/api/admin/orders${status ? `?status=${encodeURIComponent(status)}` : ""}`); drawOrders(); message(document.querySelector("#orders-message"), ""); }
       catch (error) { message(document.querySelector("#orders-message"), error.message, true); }
     }
+    async function refreshDeliveryFee() {
+      try {
+        const settings = await api("/api/admin/settings");
+        document.querySelector("#delivery-fee").value = Number(settings.deliveryFee).toFixed(2);
+        document.querySelector("#free-shipping-threshold").value = `Rs. ${Number(settings.freeShippingThreshold).toLocaleString("en-PK")}`;
+        message(document.querySelector("#delivery-fee-message"), "");
+      } catch (error) { message(document.querySelector("#delivery-fee-message"), error.message, true); }
+    }
     async function updateOrder(id, status, payment_status, button) {
       button.disabled = true;
       try { await api(`/api/admin/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, payment_status }) }); await refreshOrders(); message(document.querySelector("#orders-message"), `Order ${id} updated.`); }
@@ -166,7 +184,7 @@
       try {
         await api("/api/admin/products");
         login.classList.add("hidden"); dashboard.classList.remove("hidden");
-        document.querySelector("#password").value = ""; await Promise.all([refreshProducts(), refreshOrders()]);
+        document.querySelector("#password").value = ""; await Promise.all([refreshProducts(), refreshOrders(), refreshDeliveryFee()]);
       } catch (error) { authHeader = ""; message(loginMessage, error.message, true); }
     });
     productForm.addEventListener("submit", async event => {
@@ -176,6 +194,16 @@
         await api(editingId ? `/api/admin/products/${encodeURIComponent(editingId)}` : "/api/admin/products", { method: editingId ? "PUT" : "POST", body: JSON.stringify(values) });
         resetForm(); await refreshProducts(); message(document.querySelector("#form-message"), "Product saved.");
       } catch (error) { message(document.querySelector("#form-message"), error.message, true); }
+      finally { button.disabled = false; }
+    });
+    deliveryFeeForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const button = document.querySelector("#save-delivery-fee"); button.disabled = true;
+      try {
+        const settings = await api("/api/admin/settings/delivery-fee", { method: "PUT", body: JSON.stringify({ deliveryFee: Number(document.querySelector("#delivery-fee").value) }) });
+        document.querySelector("#delivery-fee").value = Number(settings.deliveryFee).toFixed(2);
+        message(document.querySelector("#delivery-fee-message"), "Delivery fee saved.");
+      } catch (error) { message(document.querySelector("#delivery-fee-message"), error.message, true); }
       finally { button.disabled = false; }
     });
     document.querySelector("#cancel-edit").onclick = resetForm;
