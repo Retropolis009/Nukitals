@@ -8,6 +8,23 @@ let activeProduct = null;
 let detailQuantity = 1;
 let deliveryFee = 350;
 const freeShippingThreshold = 5000;
+const pendingOrderKeyStorage = "nutikals-pending-order-key";
+
+function newCheckoutAttemptKey() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+function getCheckoutAttemptKey() {
+  const existing = localStorage.getItem(pendingOrderKeyStorage);
+  if (existing && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(existing)) return existing;
+  const key = newCheckoutAttemptKey();
+  localStorage.setItem(pendingOrderKeyStorage, key);
+  return key;
+}
 
 function saveCart() {
   localStorage.setItem("nutikals-cart", JSON.stringify(cart));
@@ -204,10 +221,12 @@ function setupCheckout() {
     if (!cart.length) return;
     message.textContent = ""; button.disabled = true; button.innerHTML = "Placing your order…";
     const fields = new FormData(form);
-    const payload = { customer: { name: fields.get("name"), phone: fields.get("phone"), email: fields.get("email"), city: fields.get("city"), postalCode: fields.get("postalCode"), address: fields.get("address") }, note: fields.get("note"), paymentMethod: fields.get("paymentMethod"), items: cart };
+    const payload = { customer: { name: fields.get("name"), phone: fields.get("phone"), email: fields.get("email"), city: fields.get("city"), postalCode: fields.get("postalCode"), address: fields.get("address") }, note: fields.get("note"), paymentMethod: fields.get("paymentMethod"), items: cart.map(item => ({ id: item.id, quantity: item.quantity })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0) };
+    let idempotencyKey;
     try {
+      idempotencyKey = getCheckoutAttemptKey();
       await cartSync;
-      const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "We couldn't place that order. Please try again.");
       const name = fields.get("name").trim().split(/\s+/)[0];
@@ -215,6 +234,7 @@ function setupCheckout() {
       document.querySelector("[data-success-id]").textContent = result.order.id;
       document.querySelector("[data-order-success]").hidden = false;
       document.querySelector(".checkout-layout").hidden = true;
+      localStorage.removeItem(pendingOrderKeyStorage);
       form.reset(); cart = []; saveCart();
     } catch (error) { message.textContent = error.message; message.classList.add("error"); }
     finally { button.disabled = !cart.length; button.innerHTML = 'Place my order <span>→</span>'; }

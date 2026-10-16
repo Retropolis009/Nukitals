@@ -25,7 +25,7 @@ Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`,
 
 The admin API uses HTTP Basic credentials over HTTPS in production. Do not expose the admin route over plain HTTP on a public network.
 
-Run `db/migrations/002_orders.sql` once against the database to create `orders` and `order_items`. Store settings are created automatically the first time the app reads or saves delivery pricing; `db/migrations/003_store_settings.sql` is also available for migration-managed deployments. The dashboard includes recent orders, customer and delivery details, line items, controls for order and payment status, and a delivery fee setting.
+Run `db/migrations/002_orders.sql` once against the database to create `orders` and `order_items`, then apply `db/migrations/004_order_idempotency.sql` before deploying the idempotent checkout update. Store settings are created automatically the first time the app reads or saves delivery pricing; `db/migrations/003_store_settings.sql` is also available for migration-managed deployments. The dashboard includes recent orders, customer and delivery details, line items, controls for order and payment status, and a delivery fee setting.
 
 ## Store behavior
 
@@ -39,3 +39,7 @@ Run `db/migrations/002_orders.sql` once against the database to create `orders` 
 - Use HTTPS and set privacy and retention policies before launch.
 
 The product gallery uses the supplied local image first and includes the remaining image links from the CSV as optional gallery items. A missing remote image is hidden automatically.
+
+## Tests
+
+Run `npm test` with `.env` configured for a local PostgreSQL server. The checkout integration tests create a uniquely named temporary schema, run the migrations and fixtures inside it, start an isolated test server, then drop the schema. They refuse to create test data when PostgreSQL reports a non-local connection.

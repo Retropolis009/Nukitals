@@ -12,6 +12,10 @@ const CART_SECRET = process.env.CART_COOKIE_SECRET || process.env.DB_PASSWORD ||
 const FREE_SHIPPING_THRESHOLD = 5000;
 let storeSettingsReady;
 
+class HttpError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
+}
+
 async function ensureStoreSettings() {
   if (!storeSettingsReady) {
     storeSettingsReady = (async () => {
@@ -170,59 +174,109 @@ async function sendOrderEmails(order) {
   return failed.length === 0;
 }
 
-async function createOrder(body = {}, cartId) {
-  const customer = body.customer || {};
-  const name = clean(customer.name, 100);
-  const phone = clean(customer.phone, 40);
-  const address = clean(customer.address, 500);
-  const city = clean(customer.city, 100);
-  const postalCode = clean(customer.postalCode, 20);
-  const email = clean(customer.email, 120);
-  const note = clean(body.note, 300);
-  if (!name || !phone || !address || !city || !postalCode || !note || !email || !["cash_on_delivery", "jazzcash"].includes(body.paymentMethod)) throw new Error("Please complete every checkout field.");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
+function normalizeOrderRequest(body = {}, cartId, idempotencyKey) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "Invalid checkout request.");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey || "")) {
+    throw new HttpError(400, "A valid checkout attempt key is required. Refresh checkout and try again.");
+  }
+  const customer = body?.customer;
+  if (!customer || typeof customer !== "object" || Array.isArray(customer)) throw new HttpError(400, "Please complete every checkout field.");
+  const fields = [customer.name, customer.phone, customer.address, customer.city, customer.postalCode, customer.email, body.note];
+  if (fields.some(value => typeof value !== "string")) throw new HttpError(400, "Please complete every checkout field.");
+  const normalized = {
+    customer: {
+      name: clean(customer.name, 100),
+      phone: clean(customer.phone, 40),
+      address: clean(customer.address, 500),
+      city: clean(customer.city, 100),
+      postalCode: clean(customer.postalCode, 20),
+      email: clean(customer.email, 120)
+    },
+    note: clean(body.note, 300),
+    paymentMethod: body.paymentMethod
+  };
+  if (Object.values(normalized.customer).some(value => !value) || !normalized.note || !["cash_on_delivery", "jazzcash"].includes(normalized.paymentMethod)) {
+    throw new HttpError(400, "Please complete every checkout field.");
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.customer.email)) throw new HttpError(400, "Enter a valid email address.");
+
+  if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 12) throw new HttpError(400, "Your cart is empty or invalid.");
+  normalized.items = body.items.map(line => ({ id: clean(line?.id, 40), quantity: Number(line?.quantity) }));
+  if (normalized.items.some(line => !line.id || !Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 10) || new Set(normalized.items.map(line => line.id)).size !== normalized.items.length) {
+    throw new HttpError(400, "A product or quantity in your cart is invalid.");
+  }
+  normalized.items.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  normalized.requestHash = crypto.createHash("sha256").update(JSON.stringify({ cartId, ...normalized })).digest("hex");
+  return normalized;
+}
+
+async function findIdempotentOrder(db, idempotencyKey, requestHash) {
+  const result = await db.query("SELECT id, total, email_sent, request_hash FROM orders WHERE idempotency_key = $1", [idempotencyKey]);
+  if (!result.rowCount) return null;
+  const existing = result.rows[0];
+  if (existing.request_hash !== requestHash) throw new HttpError(409, "This checkout attempt was already used with different details. Start a new checkout attempt.");
+  return { id: existing.id, total: Number(existing.total), emailSent: Boolean(existing.email_sent), replayed: true };
+}
+
+async function createOrder(body = {}, cartId, idempotencyKey) {
+  const request = normalizeOrderRequest(body, cartId, idempotencyKey);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const session = await client.query("SELECT id FROM cart_sessions WHERE id = $1 FOR UPDATE", [cartId]);
+    if (!session.rowCount) throw new HttpError(400, "Your cart has expired. Refresh the page and try again.");
+    const existingOrder = await findIdempotentOrder(client, idempotencyKey, request.requestHash);
+    if (existingOrder) {
+      await client.query("COMMIT");
+      return existingOrder;
+    }
     const cartResult = await client.query("SELECT product_id AS id, quantity FROM cart_items WHERE cart_id = $1 ORDER BY product_id FOR UPDATE", [cartId]);
     const requestedItems = cartResult.rows;
-    if (!requestedItems.length || requestedItems.length > 12) throw new Error("Your cart is empty or invalid.");
+    if (!requestedItems.length || requestedItems.length > 12) throw new HttpError(400, "Your cart is empty or invalid.");
+    const storedItems = requestedItems.map(line => ({ id: line.id, quantity: Number(line.quantity) }));
+    if (JSON.stringify(storedItems) !== JSON.stringify(request.items)) throw new HttpError(409, "Your cart changed. Refresh checkout and try again.");
     const productResult = await client.query("SELECT id, name, price FROM products WHERE id = ANY($1::varchar[])", [requestedItems.map(line => line.id)]);
     const items = requestedItems.map(line => {
       const product = productResult.rows.find(item => item.id === line.id);
-      if (!product) throw new Error("A product or quantity in your cart is invalid.");
+      if (!product) throw new HttpError(400, "A product or quantity in your cart is invalid.");
       const price = Number(product.price);
       return { id: product.id, name: product.name, price, quantity: line.quantity, lineTotal: price * line.quantity };
     });
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
     const deliveryFee = await getDeliveryFee(client);
     const shipping = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : deliveryFee;
-    const paymentMethod = body.paymentMethod === "jazzcash" ? "jazzcash_manual" : "cash_on_delivery";
+    const paymentMethod = request.paymentMethod === "jazzcash" ? "jazzcash_manual" : "cash_on_delivery";
     const order = {
       id: `NK-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
       createdAt: new Date().toISOString(),
-      customer: { name, phone, city, postalCode, address, email },
+      customer: request.customer,
       items,
       subtotal,
       shipping,
       total: subtotal + shipping,
+      emailSent: false,
       paymentMethod,
       paymentStatus: paymentMethod === "cash_on_delivery" ? "due_on_delivery" : "pending",
-      note,
+      note: request.note,
       status: "new"
     };
     await client.query(`INSERT INTO orders
-      (id, created_at, customer_name, customer_phone, customer_email, delivery_address, delivery_city, delivery_postal_code, payment_method, payment_status, status, note, subtotal, shipping, total)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-    [order.id, order.createdAt, name, phone, order.customer.email || null, address, city, postalCode, paymentMethod, order.paymentStatus, order.status, order.note, subtotal, shipping, order.total]);
+      (id, created_at, customer_name, customer_phone, customer_email, delivery_address, delivery_city, delivery_postal_code, payment_method, payment_status, status, note, subtotal, shipping, total, idempotency_key, request_hash)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+    [order.id, order.createdAt, request.customer.name, request.customer.phone, request.customer.email, request.customer.address, request.customer.city, request.customer.postalCode, paymentMethod, order.paymentStatus, order.status, order.note, subtotal, shipping, order.total, idempotencyKey, request.requestHash]);
     for (const item of items) {
       await client.query("INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity, line_total) VALUES ($1,$2,$3,$4,$5,$6)", [order.id, item.id, item.name, item.price, item.quantity, item.lineTotal]);
     }
     await client.query("DELETE FROM cart_items WHERE cart_id = $1", [cartId]);
     await client.query("COMMIT");
-    return order;
+    return { ...order, replayed: false };
   } catch (error) {
-    await client.query("ROLLBACK");
+    try { await client.query("ROLLBACK"); }
+    catch (rollbackError) { console.error("Order transaction rollback failed:", rollbackError); }
+    if (error.constraint === "orders_idempotency_key_uidx") {
+      const replay = await findIdempotentOrder(pool, idempotencyKey, request.requestHash);
+      if (replay) return replay;
+    }
     throw error;
   } finally { client.release(); }
 }
@@ -351,10 +405,19 @@ app.use("/api/admin", adminRouter);
 app.post("/api/orders", async (req, res) => {
   try {
     const cartId = await getCartId(req, res);
-    const order = await createOrder(req.body, cartId);
-    const emailSent = await sendOrderEmails(order);
+    const order = await createOrder(req.body, cartId, req.get("Idempotency-Key"));
+    if (order.replayed) return res.status(201).json({ ok: true, emailSent: order.emailSent, order: { id: order.id, total: order.total } });
+    let emailSent = false;
+    try { emailSent = await sendOrderEmails(order); }
+    catch (error) { console.error(`Order email failed for ${order.id}:`, error); }
+    try { await pool.query("UPDATE orders SET email_sent = $2 WHERE id = $1", [order.id, emailSent]); }
+    catch (error) { console.error(`Could not save email status for order ${order.id}:`, error); }
     res.status(201).json({ ok: true, emailSent, order: { id: order.id, total: order.total } });
-  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+  } catch (error) {
+    const status = error instanceof HttpError ? error.status : 500;
+    if (status >= 500) console.error("Order creation failed:", error);
+    res.status(status).json({ ok: false, error: status >= 500 ? "We couldn't process your order right now. Retry this checkout attempt shortly." : error.message });
+  }
 });
 
 app.use("/api", (req, res) => {

@@ -4,7 +4,8 @@
   "private": true,
   "description": "Nutikals storefront and cash-on-delivery order API",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/order-checkout.test.js"
   },
   "dependencies": {
     "dotenv": "^18.0.8",
