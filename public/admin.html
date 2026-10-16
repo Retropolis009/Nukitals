@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Store admin | Nutikals</title>
   <style>
-    :root{color-scheme:light;--ink:#243126;--muted:#68736a;--line:#dce3dc;--paper:#f5f7f3;--green:#244c36;--danger:#9c3027}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}header{background:#fff;border-bottom:1px solid var(--line);padding:18px max(24px,calc((100vw - 1080px)/2));display:flex;justify-content:space-between;align-items:center}header a{color:var(--green)}main{max-width:1080px;margin:38px auto;padding:0 24px}h1{font-size:clamp(28px,5vw,42px);margin:0 0 8px}h2{font-size:22px;margin:0 0 18px}.muted{color:var(--muted)}.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:24px;margin:24px 0;box-shadow:0 8px 30px #1935220a}.login{max-width:460px;margin:54px auto}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}label{font-weight:650;font-size:14px}input,textarea{width:100%;border:1px solid #bdc9be;border-radius:8px;padding:11px 12px;font:inherit;color:var(--ink);background:#fff}textarea{min-height:120px;resize:vertical}button{font:inherit;font-weight:650;border:0;border-radius:8px;padding:11px 16px;background:var(--green);color:white;cursor:pointer}button.secondary{background:#edf2ed;color:var(--ink)}button.danger{background:#fff1ef;color:var(--danger)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}.message{min-height:24px;margin:12px 0 0}.message.error{color:var(--danger)}.product{display:grid;grid-template-columns:74px minmax(0,1fr) auto;gap:16px;align-items:center;border-top:1px solid var(--line);padding:14px 0}.product img{width:74px;height:74px;object-fit:cover;border-radius:8px;background:#edf2ed}.product h3{margin:0 0 3px;font-size:17px}.product p{margin:0;color:var(--muted);font-size:14px}.product-actions{display:flex;gap:8px}.hidden{display:none!important}.topline{display:flex;justify-content:space-between;align-items:center;gap:16px}.help{font-size:13px;color:var(--muted)}@media(max-width:650px){main{margin:24px auto;padding:0 16px}.panel{padding:18px}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.product{grid-template-columns:58px minmax(0,1fr)}.product img{width:58px;height:58px}.product-actions{grid-column:2}.topline{align-items:flex-start;flex-direction:column}}
+    :root{color-scheme:light;--ink:#243126;--muted:#68736a;--line:#dce3dc;--paper:#f5f7f3;--green:#244c36;--danger:#9c3027}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}header{background:#fff;border-bottom:1px solid var(--line);padding:18px max(24px,calc((100vw - 1080px)/2));display:flex;justify-content:space-between;align-items:center}header a{color:var(--green)}main{max-width:1080px;margin:38px auto;padding:0 24px}h1{font-size:clamp(28px,5vw,42px);margin:0 0 8px}h2{font-size:22px;margin:0 0 18px}.muted{color:var(--muted)}.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:24px;margin:24px 0;box-shadow:0 8px 30px #1935220a}.login{max-width:460px;margin:54px auto}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}label{font-weight:650;font-size:14px}input,textarea,select{width:100%;border:1px solid #bdc9be;border-radius:8px;padding:10px 12px;font:inherit;color:var(--ink);background:#fff}textarea{min-height:120px;resize:vertical}button{font:inherit;font-weight:650;border:0;border-radius:8px;padding:11px 16px;background:var(--green);color:white;cursor:pointer}button.secondary{background:#edf2ed;color:var(--ink)}button.danger{background:#fff1ef;color:var(--danger)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}.message{min-height:24px;margin:12px 0 0}.message.error{color:var(--danger)}.product{display:grid;grid-template-columns:74px minmax(0,1fr) auto;gap:16px;align-items:center;border-top:1px solid var(--line);padding:14px 0}.product img{width:74px;height:74px;object-fit:cover;border-radius:8px;background:#edf2ed}.product h3{margin:0 0 3px;font-size:17px}.product p{margin:0;color:var(--muted);font-size:14px}.product-actions{display:flex;gap:8px}.hidden{display:none!important}.topline{display:flex;justify-content:space-between;align-items:center;gap:16px}.help{font-size:13px;color:var(--muted)}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin:22px 0}.tabs button{background:transparent;color:var(--muted);border-radius:8px 8px 0 0}.tabs button.active{background:#e7efe8;color:var(--green)}.order-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center}.order-list{display:grid;gap:14px}.order-card{border:1px solid var(--line);border-radius:12px;padding:20px;background:#fff}.order-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:14px}.order-head h3{margin:0;font-size:18px}.order-head p,.order-meta p{margin:4px 0;color:var(--muted);font-size:14px}.order-total{font-size:19px;font-weight:750;white-space:nowrap}.order-body{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;padding:16px 0}.order-body h4{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}.order-lines{margin:0;padding-left:18px}.order-lines li{padding:2px 0}.order-controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:15px}.order-controls label{min-width:165px}.order-controls button{height:42px}.filter{max-width:190px}.empty-state{padding:28px 12px;text-align:center;color:var(--muted)}@media(max-width:650px){main{margin:24px auto;padding:0 16px}.panel{padding:18px}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.product{grid-template-columns:58px minmax(0,1fr)}.product img{width:58px;height:58px}.product-actions{grid-column:2}.topline{align-items:flex-start;flex-direction:column}.order-body{grid-template-columns:1fr}.order-head{flex-direction:column}.order-toolbar{align-items:stretch;flex-direction:column}}
   </style>
 </head>
 <body>
@@ -21,7 +21,9 @@
       </form><p id="login-message" class="message" role="status"></p>
     </section>
     <section id="dashboard" class="hidden">
-      <div class="topline"><div><h1>Products</h1><p class="muted">Create and update products in your PostgreSQL catalog.</p></div><button id="sign-out" class="secondary">Sign out</button></div>
+      <div class="topline"><div><h1>Store admin</h1><p class="muted">Manage your catalog and customer orders.</p></div><button id="sign-out" class="secondary">Sign out</button></div>
+      <nav class="tabs" aria-label="Admin sections"><button class="active" data-tab="products">Products</button><button data-tab="orders">Orders <span id="new-order-count"></span></button></nav>
+      <section id="products-view">
       <section class="panel">
         <h2 id="form-title">Add a product</h2>
         <form id="product-form">
@@ -36,6 +38,13 @@
         </form>
       </section>
       <section class="panel"><div class="topline"><h2>Current catalog</h2><button id="refresh" class="secondary">Refresh</button></div><div id="product-list" class="muted">Loading…</div><p id="list-message" class="message" role="status"></p></section>
+      </section>
+      <section id="orders-view" class="hidden">
+        <section class="panel">
+          <div class="order-toolbar"><div><h2>Orders</h2><p class="muted">Review customer details, items, delivery, and payment status.</p></div><select id="order-filter" class="filter" aria-label="Filter orders"><option value="">All order statuses</option><option value="new">New</option><option value="confirmed">Confirmed</option><option value="processing">Processing</option><option value="shipped">Shipped</option><option value="delivered">Delivered</option><option value="cancelled">Cancelled</option></select><button id="refresh-orders" class="secondary">Refresh</button></div>
+          <div id="order-list" class="order-list"><p class="empty-state">Sign in to load orders.</p></div><p id="orders-message" class="message" role="status"></p>
+        </section>
+      </section>
     </section>
   </main>
   <script>
@@ -45,9 +54,13 @@
     const loginMessage = document.querySelector("#login-message");
     const productForm = document.querySelector("#product-form");
     const productList = document.querySelector("#product-list");
+    const orderList = document.querySelector("#order-list");
     let authHeader = "";
     let editingId = null;
     let products = [];
+    let orders = [];
+    const orderStatuses = ["new", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+    const paymentStatuses = ["pending", "paid", "due_on_delivery", "refunded"];
     const basic = value => "Basic " + btoa(unescape(encodeURIComponent(value)));
     async function api(path, options = {}) {
       const response = await fetch(path, { ...options, headers: { "Content-Type": "application/json", Authorization: authHeader, ...(options.headers || {}) } });
@@ -76,6 +89,56 @@
       try { products = await api("/api/admin/products"); drawProducts(); message(document.querySelector("#list-message"), ""); }
       catch (error) { message(document.querySelector("#list-message"), error.message, true); }
     }
+    function makeSelect(values, selected, label) {
+      const select = document.createElement("select"); select.setAttribute("aria-label", label);
+      for (const value of values) { const option = document.createElement("option"); option.value = value; option.textContent = value.split("_").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" "); select.append(option); }
+      select.value = selected; return select;
+    }
+    function drawOrders() {
+      const newCount = document.querySelector("#order-filter").value ? 0 : orders.filter(order => order.status === "new").length;
+      document.querySelector("#new-order-count").textContent = newCount ? `(${newCount} new)` : "";
+      if (!orders.length) { orderList.innerHTML = '<p class="empty-state">No orders match this filter.</p>'; return; }
+      orderList.replaceChildren(...orders.map(order => {
+        const card = document.createElement("article"); card.className = "order-card";
+        const head = document.createElement("div"); head.className = "order-head";
+        const heading = document.createElement("div"); const title = document.createElement("h3"); title.textContent = order.id;
+        const date = document.createElement("p"); date.textContent = new Intl.DateTimeFormat("en-PK", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Karachi" }).format(new Date(order.created_at));
+        heading.append(title, date);
+        const total = document.createElement("div"); total.className = "order-total"; total.textContent = `Rs. ${Number(order.total).toLocaleString("en-PK")}`;
+        head.append(heading, total);
+        const body = document.createElement("div"); body.className = "order-body";
+        const customer = document.createElement("div"); customer.className = "order-meta";
+        const customerHeading = document.createElement("h4"); customerHeading.textContent = "Customer & delivery";
+        const customerName = document.createElement("p"); customerName.textContent = order.customer_name;
+        const phone = document.createElement("p"); phone.textContent = order.customer_phone;
+        const email = document.createElement("p"); email.textContent = order.customer_email || "No email provided";
+        const address = document.createElement("p"); address.textContent = [order.delivery_address, order.delivery_city, order.delivery_postal_code].filter(Boolean).join(", ");
+        customer.append(customerHeading, customerName, phone, email, address);
+        const itemSection = document.createElement("div"); const itemsHeading = document.createElement("h4"); itemsHeading.textContent = "Items & payment";
+        const list = document.createElement("ul"); list.className = "order-lines";
+        for (const item of order.items || []) { const li = document.createElement("li"); li.textContent = `${item.quantity} x ${item.name} — Rs. ${Number(item.lineTotal).toLocaleString("en-PK")}`; list.append(li); }
+        const payment = document.createElement("p"); payment.className = "muted"; payment.textContent = `${order.payment_method === "jazzcash_manual" ? "JazzCash (manual)" : "Cash on delivery"} · Shipping Rs. ${Number(order.shipping).toLocaleString("en-PK")}`;
+        const note = document.createElement("p"); note.className = "muted"; note.textContent = order.note ? `Note: ${order.note}` : "";
+        itemSection.append(itemsHeading, list, payment, note); body.append(customer, itemSection);
+        const controls = document.createElement("div"); controls.className = "order-controls";
+        const statusLabel = document.createElement("label"); statusLabel.textContent = "Order status"; const statusSelect = makeSelect(orderStatuses, order.status, `Order status for ${order.id}`); statusLabel.append(statusSelect);
+        const paymentLabel = document.createElement("label"); paymentLabel.textContent = "Payment status"; const paymentSelect = makeSelect(paymentStatuses, order.payment_status, `Payment status for ${order.id}`); paymentLabel.append(paymentSelect);
+        const update = document.createElement("button"); update.textContent = "Save status"; update.onclick = () => updateOrder(order.id, statusSelect.value, paymentSelect.value, update);
+        controls.append(statusLabel, paymentLabel, update); card.append(head, body, controls); return card;
+      }));
+    }
+    async function refreshOrders() {
+      orderList.innerHTML = '<p class="empty-state">Loading orders…</p>';
+      const status = document.querySelector("#order-filter").value;
+      try { orders = await api(`/api/admin/orders${status ? `?status=${encodeURIComponent(status)}` : ""}`); drawOrders(); message(document.querySelector("#orders-message"), ""); }
+      catch (error) { message(document.querySelector("#orders-message"), error.message, true); }
+    }
+    async function updateOrder(id, status, payment_status, button) {
+      button.disabled = true;
+      try { await api(`/api/admin/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, payment_status }) }); await refreshOrders(); message(document.querySelector("#orders-message"), `Order ${id} updated.`); }
+      catch (error) { message(document.querySelector("#orders-message"), error.message, true); }
+      finally { button.disabled = false; }
+    }
     function startEdit(product) {
       editingId = product.id;
       for (const field of productForm.elements) if (field.name) field.value = product[field.name] ?? "";
@@ -103,7 +166,7 @@
       try {
         await api("/api/admin/products");
         login.classList.add("hidden"); dashboard.classList.remove("hidden");
-        document.querySelector("#password").value = ""; await refreshProducts();
+        document.querySelector("#password").value = ""; await Promise.all([refreshProducts(), refreshOrders()]);
       } catch (error) { authHeader = ""; message(loginMessage, error.message, true); }
     });
     productForm.addEventListener("submit", async event => {
@@ -117,7 +180,16 @@
     });
     document.querySelector("#cancel-edit").onclick = resetForm;
     document.querySelector("#refresh").onclick = refreshProducts;
-    document.querySelector("#sign-out").onclick = () => { authHeader = ""; products = []; dashboard.classList.add("hidden"); login.classList.remove("hidden"); loginForm.reset(); message(loginMessage, ""); };
+    document.querySelector("#refresh-orders").onclick = refreshOrders;
+    document.querySelector("#order-filter").onchange = refreshOrders;
+    document.querySelectorAll("[data-tab]").forEach(tab => tab.onclick = () => {
+      const ordersActive = tab.dataset.tab === "orders";
+      document.querySelectorAll("[data-tab]").forEach(item => item.classList.toggle("active", item === tab));
+      document.querySelector("#products-view").classList.toggle("hidden", ordersActive);
+      document.querySelector("#orders-view").classList.toggle("hidden", !ordersActive);
+      if (ordersActive) refreshOrders();
+    });
+    document.querySelector("#sign-out").onclick = () => { authHeader = ""; products = []; orders = []; dashboard.classList.add("hidden"); login.classList.remove("hidden"); loginForm.reset(); message(loginMessage, ""); };
   </script>
 </body>
 </html>

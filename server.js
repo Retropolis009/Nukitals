@@ -1,29 +1,14 @@
-const http = require("node:http");
-const fs = require("node:fs/promises");
+const express = require("express");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const pool = require("./db");
 const productDetails = require("./products");
+const nodemailer = require("nodemailer");
 
-const ROOT = __dirname;
-const PUBLIC = path.join(ROOT, "public");
-const ORDER_FILE = path.join(ROOT, "orders", "orders.jsonl");
+const PUBLIC = path.join(__dirname, "public");
 const PORT = Number(process.env.PORT || 3000);
-const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
-
-function send(res, status, data, type = "application/json; charset=utf-8") {
-  res.writeHead(status, { "Content-Type": type, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin", "Cache-Control": "no-store" });
-  res.end(type.startsWith("application/json") ? JSON.stringify(data) : data);
-}
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let raw = "";
-    req.on("data", chunk => { raw += chunk; if (raw.length > 20_000) reject(new Error("Order is too large")); });
-    req.on("end", () => { try { resolve(JSON.parse(raw || "{}")); } catch { reject(new Error("Invalid JSON")); } });
-    req.on("error", reject);
-  });
-}
+const CART_COOKIE = "nutikals_cart";
+const CART_SECRET = process.env.CART_COOKIE_SECRET || process.env.DB_PASSWORD || "";
 
 function clean(value, max = 180) {
   return String(value || "").trim().replace(/[<>\u0000-\u001f]/g, "").slice(0, max);
@@ -35,26 +20,21 @@ function credentialsMatch(actual, expected) {
   return actualBytes.length === expectedBytes.length && crypto.timingSafeEqual(actualBytes, expectedBytes);
 }
 
-function requireAdmin(req, res) {
+function requireAdmin(req, res, next) {
   const adminUser = process.env.ADMIN_USER;
   const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminUser || !adminPassword) {
-    send(res, 503, { error: "Admin login is not configured. Set ADMIN_USER and ADMIN_PASSWORD." });
-    return false;
-  }
-  const header = req.headers.authorization || "";
-  const match = header.match(/^Basic\s+(.+)$/i);
+  if (!adminUser || !adminPassword) return res.status(503).json({ error: "Admin login is not configured. Set ADMIN_USER and ADMIN_PASSWORD." });
+  const match = (req.headers.authorization || "").match(/^Basic\s+(.+)$/i);
   if (match) {
     try {
       const [user, ...passwordParts] = Buffer.from(match[1], "base64").toString("utf8").split(":");
-      if (credentialsMatch(user || "", adminUser) && credentialsMatch(passwordParts.join(":"), adminPassword)) return true;
+      if (credentialsMatch(user || "", adminUser) && credentialsMatch(passwordParts.join(":"), adminPassword)) return next();
     } catch { /* Return the same response for malformed credentials. */ }
   }
-  send(res, 401, { error: "Enter your admin username and password." });
-  return false;
+  return res.status(401).json({ error: "Enter your admin username and password." });
 }
 
-function validateProduct(body) {
+function validateProduct(body = {}) {
   const id = clean(body.id, 40).toLowerCase();
   const name = clean(body.name, 160);
   const description = String(body.description || "").trim().slice(0, 5000);
@@ -83,7 +63,93 @@ function presentProduct(row) {
   };
 }
 
-async function createOrder(body) {
+function signCartId(id) {
+  return crypto.createHmac("sha256", CART_SECRET).update(id).digest("hex");
+}
+
+function cartCookieId(req) {
+  if (!CART_SECRET) return null;
+  const value = (req.headers.cookie || "").split(";").map(part => part.trim()).find(part => part.startsWith(`${CART_COOKIE}=`))?.slice(CART_COOKIE.length + 1);
+  if (!value) return null;
+  const [id, signature] = value.split(".");
+  if (!/^[0-9a-f-]{36}$/i.test(id || "") || !/^[a-f0-9]{64}$/i.test(signature || "")) return null;
+  const expected = Buffer.from(signCartId(id), "hex");
+  const actual = Buffer.from(signature, "hex");
+  return crypto.timingSafeEqual(expected, actual) ? id : null;
+}
+
+async function getCartId(req, res) {
+  if (!CART_SECRET) throw new Error("Set CART_COOKIE_SECRET or DB_PASSWORD to enable saved carts.");
+  await pool.query("DELETE FROM cart_sessions WHERE expires_at < now()");
+  let id = cartCookieId(req);
+  if (!id) {
+    id = crypto.randomUUID();
+    const signature = signCartId(id);
+    const secure = req.secure || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+    res.setHeader("Set-Cookie", `${CART_COOKIE}=${id}.${signature}; Path=/; HttpOnly; SameSite=Lax; Max-Age=7776000${secure}`);
+  }
+  await pool.query("INSERT INTO cart_sessions (id, expires_at) VALUES ($1, now() + interval '90 days') ON CONFLICT (id) DO UPDATE SET updated_at = now(), expires_at = now() + interval '90 days'", [id]);
+  return id;
+}
+
+async function updateCart(cartId, input) {
+  if (!Array.isArray(input) || input.length > 12) throw new Error("Your cart is invalid.");
+  const items = input.map(line => ({ id: clean(line.id, 40), quantity: Number(line.quantity) }));
+  if (items.some(line => !line.id || !Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 10) || new Set(items.map(line => line.id)).size !== items.length) throw new Error("A product or quantity in your cart is invalid.");
+  const client = await pool.connect();
+  try {
+    const result = await client.query("SELECT id FROM products WHERE id = ANY($1::varchar[])", [items.map(line => line.id)]);
+    if (result.rows.length !== items.length) throw new Error("A product in your cart is no longer available.");
+    await client.query("BEGIN");
+    await client.query("DELETE FROM cart_items WHERE cart_id = $1", [cartId]);
+    for (const line of items) await client.query("INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)", [cartId, line.id, line.quantity]);
+    await client.query("UPDATE cart_sessions SET updated_at = now(), expires_at = now() + interval '90 days' WHERE id = $1", [cartId]);
+    await client.query("COMMIT");
+    return items;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
+}
+
+async function sendOrderEmails(order) {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, EMAIL_TO } = process.env;
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASSWORD || !EMAIL_FROM || !EMAIL_TO) {
+    console.warn("Order email not sent: configure SMTP_HOST, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, and EMAIL_TO.");
+    return false;
+  }
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: Number(SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: { user: SMTP_USER, pass: SMTP_PASSWORD },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000
+  });
+  const lines = order.items.map(item => `${item.quantity} x ${item.name} — Rs. ${item.lineTotal.toLocaleString("en-PK")}`).join("\n");
+  const text = [
+    `Order ${order.id}`,
+    `Customer: ${order.customer.name}`,
+    `Phone: ${order.customer.phone}`,
+    `Email: ${order.customer.email || "not provided"}`,
+    `Delivery: ${order.customer.address}, ${order.customer.city} ${order.customer.postalCode}`,
+    `Payment: ${order.paymentMethod === "jazzcash_manual" ? "JazzCash (manual transfer; verify payment separately)" : "Cash on delivery"}`,
+    "", "Items:", lines,
+    "", `Subtotal: Rs. ${order.subtotal.toLocaleString("en-PK")}`,
+    `Shipping: Rs. ${order.shipping.toLocaleString("en-PK")}`,
+    `Total: Rs. ${order.total.toLocaleString("en-PK")}`,
+    `Note: ${order.note || "—"}`
+  ].join("\n");
+  const deliveries = [transporter.sendMail({ from: EMAIL_FROM, to: EMAIL_TO, subject: `New Nutikals order ${order.id}`, text })];
+  if (order.customer.email) deliveries.push(transporter.sendMail({ from: EMAIL_FROM, to: order.customer.email, subject: `Nutikals order received: ${order.id}`, text: `Hi ${order.customer.name},\n\nWe received your order and our team will contact you to confirm delivery.\n\n${text}` }));
+  const results = await Promise.allSettled(deliveries);
+  const failed = results.filter(result => result.status === "rejected");
+  if (failed.length) console.error(`Email delivery failed for order ${order.id}:`, failed.map(result => result.reason?.message || "Unknown error").join("; "));
+  return failed.length === 0;
+}
+
+async function createOrder(body = {}, cartId) {
   const customer = body.customer || {};
   const name = clean(customer.name, 100);
   const phone = clean(customer.phone, 40);
@@ -91,99 +157,167 @@ async function createOrder(body) {
   const city = clean(customer.city, 100);
   const postalCode = clean(customer.postalCode, 20);
   if (!name || !phone || !address || !city) throw new Error("Please complete your name, phone, city and delivery address.");
-  if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 12) throw new Error("Your cart is empty or invalid.");
-
-  const requestedItems = body.items.map(line => ({ id: clean(line.id, 40), quantity: Number(line.quantity) }));
-  if (requestedItems.some(line => !Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 10)) throw new Error("A product or quantity in your cart is invalid.");
-  const productResult = await pool.query("SELECT id, name, price FROM products WHERE id = ANY($1::varchar[])", [requestedItems.map(line => line.id)]);
-  const items = requestedItems.map(line => {
-    const product = productResult.rows.find(item => item.id === line.id);
-    const quantity = line.quantity;
-    if (!product) throw new Error("A product or quantity in your cart is invalid.");
-    const price = Number(product.price);
-    return { id: product.id, name: product.name, price, quantity, lineTotal: price * quantity };
-  });
-  const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
-  const shipping = subtotal >= 5000 ? 0 : 350;
-  const order = {
-    id: `NK-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-    createdAt: new Date().toISOString(),
-    customer: { name, phone, city, postalCode, address, email: clean(customer.email, 120) },
-    items,
-    subtotal,
-    shipping,
-    total: subtotal + shipping,
-    paymentMethod: body.paymentMethod === "jazzcash" ? "jazzcash_manual" : "cash_on_delivery",
-    note: clean(body.note, 300),
-    status: "new"
-  };
-  await fs.mkdir(path.dirname(ORDER_FILE), { recursive: true });
-  await fs.appendFile(ORDER_FILE, JSON.stringify(order) + "\n", "utf8");
-  return order;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const cartResult = await client.query("SELECT product_id AS id, quantity FROM cart_items WHERE cart_id = $1 ORDER BY product_id FOR UPDATE", [cartId]);
+    const requestedItems = cartResult.rows;
+    if (!requestedItems.length || requestedItems.length > 12) throw new Error("Your cart is empty or invalid.");
+    const productResult = await client.query("SELECT id, name, price FROM products WHERE id = ANY($1::varchar[])", [requestedItems.map(line => line.id)]);
+    const items = requestedItems.map(line => {
+      const product = productResult.rows.find(item => item.id === line.id);
+      if (!product) throw new Error("A product or quantity in your cart is invalid.");
+      const price = Number(product.price);
+      return { id: product.id, name: product.name, price, quantity: line.quantity, lineTotal: price * line.quantity };
+    });
+    const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const shipping = subtotal >= 5000 ? 0 : 350;
+    const paymentMethod = body.paymentMethod === "jazzcash" ? "jazzcash_manual" : "cash_on_delivery";
+    const order = {
+      id: `NK-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`,
+      createdAt: new Date().toISOString(),
+      customer: { name, phone, city, postalCode, address, email: clean(customer.email, 120) },
+      items,
+      subtotal,
+      shipping,
+      total: subtotal + shipping,
+      paymentMethod,
+      paymentStatus: paymentMethod === "cash_on_delivery" ? "due_on_delivery" : "pending",
+      note: clean(body.note, 300),
+      status: "new"
+    };
+    await client.query(`INSERT INTO orders
+      (id, created_at, customer_name, customer_phone, customer_email, delivery_address, delivery_city, delivery_postal_code, payment_method, payment_status, status, note, subtotal, shipping, total)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+    [order.id, order.createdAt, name, phone, order.customer.email || null, address, city, postalCode, paymentMethod, order.paymentStatus, order.status, order.note, subtotal, shipping, order.total]);
+    for (const item of items) {
+      await client.query("INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity, line_total) VALUES ($1,$2,$3,$4,$5,$6)", [order.id, item.id, item.name, item.price, item.quantity, item.lineTotal]);
+    }
+    await client.query("DELETE FROM cart_items WHERE cart_id = $1", [cartId]);
+    await client.query("COMMIT");
+    return order;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally { client.release(); }
 }
 
-const server = http.createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-    if (req.method === "GET" && url.pathname === "/api/products") {
-      const result = await pool.query("SELECT id, name, price, description, image_url FROM products ORDER BY id");
-      return send(res, 200, result.rows.map(presentProduct));
-    }
-    if (url.pathname === "/admin" || url.pathname === "/admin.html") {
-      const contents = await fs.readFile(path.join(PUBLIC, "admin.html"));
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin", "Cache-Control": "no-store" });
-      return req.method === "HEAD" ? res.end() : res.end(contents);
-    }
-    if (url.pathname.startsWith("/api/admin/")) {
-      if (!requireAdmin(req, res)) return;
-      if (url.pathname === "/api/admin/products" && req.method === "GET") {
-        const result = await pool.query("SELECT id, name, price, description, image_url FROM products ORDER BY id");
-        return send(res, 200, result.rows);
-      }
-      if (url.pathname === "/api/admin/products" && req.method === "POST") {
-        try {
-          const product = validateProduct(await readBody(req));
-          const result = await pool.query("INSERT INTO products (id, name, price, description, image_url) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, price, description, image_url", [product.id, product.name, product.price, product.description, product.image_url]);
-          return send(res, 201, result.rows[0]);
-        } catch (error) {
-          return send(res, error.code === "23505" ? 409 : 400, { error: error.code === "23505" ? "That product ID already exists." : error.message });
-        }
-      }
-      const productMatch = url.pathname.match(/^\/api\/admin\/products\/([a-z0-9-]+)$/);
-      if (productMatch && req.method === "PUT") {
-        try {
-          const product = validateProduct({ ...await readBody(req), id: productMatch[1] });
-          const result = await pool.query("UPDATE products SET name = $2, price = $3, description = $4, image_url = $5 WHERE id = $1 RETURNING id, name, price, description, image_url", [product.id, product.name, product.price, product.description, product.image_url]);
-          if (!result.rowCount) return send(res, 404, { error: "Product not found." });
-          return send(res, 200, result.rows[0]);
-        } catch (error) { return send(res, 400, { error: error.message }); }
-      }
-      if (productMatch && req.method === "DELETE") {
-        const result = await pool.query("DELETE FROM products WHERE id = $1 RETURNING id", [productMatch[1]]);
-        if (!result.rowCount) return send(res, 404, { error: "Product not found." });
-        return send(res, 200, { ok: true });
-      }
-      return send(res, 405, { error: "Method not allowed" });
-    }
-    if (req.method === "POST" && url.pathname === "/api/orders") {
-      try {
-        const order = await createOrder(await readBody(req));
-        return send(res, 201, { ok: true, order: { id: order.id, total: order.total } });
-      } catch (error) { return send(res, 400, { ok: false, error: error.message }); }
-    }
-    if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, { error: "Method not allowed" });
+const app = express();
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (req.path.startsWith("/api/")) res.set("Cache-Control", "no-store");
+  next();
+});
+app.use(express.json({ limit: "20kb" }));
 
-    let requested = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
-    const file = path.resolve(PUBLIC, `.${requested}`);
-    if (!file.startsWith(PUBLIC + path.sep) && file !== path.join(PUBLIC, "index.html")) return send(res, 403, { error: "Forbidden" });
-    const contents = await fs.readFile(file);
-    res.writeHead(200, { "Content-Type": mime[path.extname(file).toLowerCase()] || "application/octet-stream", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin" });
-    return req.method === "HEAD" ? res.end() : res.end(contents);
+app.get("/api/products", async (req, res) => {
+  const result = await pool.query("SELECT id, name, price, description, image_url FROM products ORDER BY id");
+  res.json(result.rows.map(presentProduct));
+});
+
+app.get("/api/cart", async (req, res) => {
+  const cartId = await getCartId(req, res);
+  const result = await pool.query("SELECT product_id AS id, quantity FROM cart_items WHERE cart_id = $1 ORDER BY product_id", [cartId]);
+  res.json({ items: result.rows });
+});
+
+app.put("/api/cart", async (req, res) => {
+  try {
+    const cartId = await getCartId(req, res);
+    const items = await updateCart(cartId, req.body?.items);
+    res.json({ ok: true, items });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+app.get(["/admin", "/admin.html"], (req, res) => {
+  res.set("Cache-Control", "no-store").sendFile(path.join(PUBLIC, "admin.html"));
+});
+
+const adminRouter = express.Router();
+adminRouter.use(requireAdmin);
+
+adminRouter.get("/products", async (req, res) => {
+  const result = await pool.query("SELECT id, name, price, description, image_url FROM products ORDER BY id");
+  res.json(result.rows);
+});
+
+adminRouter.post("/products", async (req, res) => {
+  try {
+    const product = validateProduct(req.body);
+    const result = await pool.query("INSERT INTO products (id, name, price, description, image_url) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, price, description, image_url", [product.id, product.name, product.price, product.description, product.image_url]);
+    res.status(201).json(result.rows[0]);
   } catch (error) {
-    if (error.code === "ENOENT") return send(res, 404, { error: "Not found" });
-    console.error(error);
-    return send(res, 500, { error: "Something went wrong." });
+    res.status(error.code === "23505" ? 409 : 400).json({ error: error.code === "23505" ? "That product ID already exists." : error.message });
   }
 });
 
-server.listen(PORT, () => console.log(`Nutikals is running at http://localhost:${PORT}`));
+adminRouter.put("/products/:productId", async (req, res) => {
+  try {
+    const product = validateProduct({ ...req.body, id: req.params.productId });
+    const result = await pool.query("UPDATE products SET name = $2, price = $3, description = $4, image_url = $5 WHERE id = $1 RETURNING id, name, price, description, image_url", [product.id, product.name, product.price, product.description, product.image_url]);
+    if (!result.rowCount) return res.status(404).json({ error: "Product not found." });
+    res.json(result.rows[0]);
+  } catch (error) { res.status(400).json({ error: error.message }); }
+});
+
+adminRouter.delete("/products/:productId", async (req, res) => {
+  await pool.query("DELETE FROM cart_items WHERE product_id = $1", [req.params.productId]);
+  const result = await pool.query("DELETE FROM products WHERE id = $1 RETURNING id", [req.params.productId]);
+  if (!result.rowCount) return res.status(404).json({ error: "Product not found." });
+  res.json({ ok: true });
+});
+
+adminRouter.get("/orders", async (req, res) => {
+  const status = req.query.status || null;
+  const validStatuses = ["new", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+  if (status && !validStatuses.includes(status)) return res.status(400).json({ error: "Invalid order status filter." });
+  const result = await pool.query(`SELECT o.id, o.created_at, o.customer_name, o.customer_phone, o.customer_email,
+    o.delivery_address, o.delivery_city, o.delivery_postal_code, o.payment_method, o.payment_status,
+    o.status, o.note, o.subtotal, o.shipping, o.total,
+    COALESCE(json_agg(json_build_object('id', i.product_id, 'name', i.product_name, 'price', i.unit_price, 'quantity', i.quantity, 'lineTotal', i.line_total) ORDER BY i.id) FILTER (WHERE i.id IS NOT NULL), '[]'::json) AS items
+    FROM orders o LEFT JOIN order_items i ON i.order_id = o.id
+    WHERE ($1::varchar IS NULL OR o.status = $1)
+    GROUP BY o.id ORDER BY o.created_at DESC LIMIT 200`, [status]);
+  res.json(result.rows);
+});
+
+adminRouter.patch("/orders/:orderId", async (req, res) => {
+  try {
+    const status = req.body?.status === undefined ? null : req.body.status;
+    const paymentStatus = req.body?.payment_status === undefined ? null : req.body.payment_status;
+    if (status !== null && !["new", "confirmed", "processing", "shipped", "delivered", "cancelled"].includes(status)) throw new Error("Invalid order status.");
+    if (paymentStatus !== null && !["pending", "paid", "due_on_delivery", "refunded"].includes(paymentStatus)) throw new Error("Invalid payment status.");
+    if (status === null && paymentStatus === null) throw new Error("Choose an order or payment status to update.");
+    const result = await pool.query("UPDATE orders SET status = COALESCE($2, status), payment_status = COALESCE($3, payment_status) WHERE id = $1 RETURNING id, status, payment_status", [req.params.orderId, status, paymentStatus]);
+    if (!result.rowCount) return res.status(404).json({ error: "Order not found." });
+    res.json(result.rows[0]);
+  } catch (error) { res.status(400).json({ error: error.message }); }
+});
+
+app.use("/api/admin", adminRouter);
+
+app.post("/api/orders", async (req, res) => {
+  try {
+    const cartId = await getCartId(req, res);
+    const order = await createOrder(req.body, cartId);
+    const emailSent = await sendOrderEmails(order);
+    res.status(201).json({ ok: true, emailSent, order: { id: order.id, total: order.total } });
+  } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
+});
+
+app.use("/api", (req, res) => {
+  res.status(req.method === "GET" || req.method === "HEAD" ? 404 : 405).json({ error: req.method === "GET" || req.method === "HEAD" ? "Not found" : "Method not allowed" });
+});
+
+app.use(express.static(PUBLIC));
+app.use((req, res) => res.status(404).json({ error: "Not found" }));
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  const status = error.status === 400 || error.status === 413 ? error.status : 500;
+  if (status === 500) console.error(error);
+  res.status(status).json({ error: status === 413 ? "Request body is too large." : status === 400 ? "Invalid JSON request body." : "Something went wrong." });
+});
+
+app.listen(PORT, () => console.log(`Nutikals is running at http://localhost:${PORT}`));

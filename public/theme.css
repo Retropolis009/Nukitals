@@ -154,3 +154,48 @@ body.checkout-screen{min-height:100vh;background:#0d1e28;color:#eff6fb;font-fami
 @media(max-width:700px){.storefront .site-header{padding:0 18px}.storefront .site-header nav{gap:12px;font-size:9px}.storefront .site-header nav a:nth-child(n+3){display:none}.store-main{width:calc(100% - 28px)}.carousel-image{aspect-ratio:1.65;border-radius:15px}.carousel-caption{align-items:flex-start;gap:10px}.carousel-controls{gap:5px}.carousel-controls>button:not(.carousel-add){width:31px;height:29px}.carousel-add{font-size:8px;padding:9px 11px}.landing-intro{gap:18px;padding:39px 0}.landing-intro h2{font-size:31px}.landing-intro>div>p{font-size:10px}.pill-button{font-size:9px;padding:10px 12px;margin:0 4px 5px 0}.product-grid{grid-template-columns:1fr 1fr;gap:11px}.storefront .card-copy{padding:12px;min-height:164px}.storefront .card-copy h3{font-size:12px}.storefront .card-copy>p{font-size:9px}.storefront .quick-add{padding:8px 10px;font-size:8px}.science-panel{grid-template-columns:1fr;gap:21px;padding:29px;border-radius:22px}.science-panel h2 br{display:none}.shipping-section{padding:10px 0 48px}.shipping-section>h2{margin-bottom:25px}.shipping-cards{grid-template-columns:1fr 1fr;gap:10px}.shipping-cards article{min-height:150px;padding:16px}.shipping-cards h3{font-size:13px}.shipping-cards p{font-size:10px}.reviews-section{padding:20px 0 50px}.reviews-heading{align-items:start;flex-direction:column;gap:16px;margin-bottom:23px}.review-cards{grid-template-columns:1fr;gap:12px}.review-cards article,.review-cards article:nth-child(2),.review-cards article:nth-child(3){margin:0;min-height:0}.storefront .store-footer{grid-template-columns:1fr 1fr;gap:28px 20px;padding:38px 22px 25px}.store-footer .footer-brand .brand-footer{font-size:40px}.store-footer .footer-brand p{font-size:12px}.store-footer .copyright{margin-top:0}.checkout-header{margin:0 17px}.checkout-page{padding:18px 16px 45px}.checkout-layout{grid-template-columns:1fr;gap:15px}.checkout-screen .order-summary{position:static;grid-row:1;margin:0 0 5px}.checkout-form h1{font-size:28px}.checkout-card{padding:16px}.checkout-card .field input{height:42px}.checkout-screen .order-success{padding:35px 20px}}
 @media(max-width:580px){.checkout-card .form-grid{grid-template-columns:minmax(0,1fr)}.checkout-card .form-grid>.field{grid-column:1/-1}}
 @media(max-width:390px){.storefront .brand{font-size:21px}.storefront .site-header nav{gap:8px}.storefront .cart-button{padding:7px 10px}.carousel-caption h1{font-size:13px}.carousel-controls{gap:3px}.carousel-controls>button:not(.carousel-add){width:27px}.landing-intro{grid-template-columns:1fr;gap:14px}.landing-intro h2 br{display:none}}
+
+/* Cart drawer and quantity badge */
+.storefront .cart-button{display:inline-flex;align-items:center;gap:8px}
+.storefront .cart-button span{display:inline-grid;place-items:center;width:21px;height:21px;margin:0;border:1px solid #71a8c2;border-radius:50%;background:#12364b;color:#fff;font-size:10px;font-weight:800}
+.cart-drawer .drawer-shade{background:rgba(4,15,23,.72)}
+.cart-drawer .drawer-panel{width:min(440px,100%);padding:22px 22px 18px;background:#122b3b;color:#f0f6fa;box-shadow:-15px 0 45px #05141d55}
+.cart-drawer .drawer-head{border-color:#294a5d;padding-bottom:17px}
+.cart-drawer .drawer-head h2{font-family:var(--sans);font-size:19px;font-weight:750;color:#f2f7fa}
+.cart-drawer .drawer-head h2 span{font:700 10px var(--sans);color:#a8c9db}
+.storefront .icon-button{color:#eef5f8}
+.cart-drawer .cart-line{grid-template-columns:60px minmax(0,1fr) auto;gap:12px;padding:15px 0;border-color:#294a5d}
+.cart-drawer .cart-line>img{width:60px;height:64px;border:1px solid #426277;border-radius:11px;background:#f8fafb;object-fit:cover}
+.cart-drawer .cart-line-copy>a{font:700 13px/1.35 var(--sans);color:#f2f7fa}
+.cart-drawer .cart-line-copy>span,.cart-drawer .cart-line>strong{font-size:11px;color:#c7dbe6}
+.cart-drawer .cart-line>strong{padding-top:2px;white-space:nowrap}
+.cart-drawer .cart-line-actions{display:flex;align-items:center;gap:15px;margin-top:5px}
+.cart-drawer .cart-quantity{height:37px;min-width:112px;justify-content:space-around;border:1px solid #31566c;border-radius:99px;margin:0;background:#142f41}
+.cart-drawer .cart-quantity button{width:28px;height:34px;color:#f4f8fa;font-size:15px}
+.cart-drawer .cart-quantity span{font-size:12px;color:#fff;font-weight:700;min-width:16px;text-align:center}
+.cart-drawer .cart-quantity .remove-line{height:auto;width:auto;padding:0;border:0;background:none;color:#9fc9df;font-size:10px;text-decoration:underline}
+.cart-drawer .cart-line-actions .remove-line{border:0;padding:0;background:none;color:#9fc9df;font-size:10px;text-decoration:underline;cursor:pointer}
+.cart-drawer .drawer-bottom{padding-top:12px;border-top:1px solid #294a5d}
+.cart-drawer .shipping-progress{margin-bottom:13px}
+.cart-drawer .shipping-progress p{margin:0 0 9px;color:#b5d0df;font-size:11px}
+.cart-drawer .shipping-meter{height:7px;overflow:hidden;border-radius:99px;background:#25475a}
+.cart-drawer .shipping-meter span{display:block;height:100%;width:0;border-radius:inherit;background:#68cda6;transition:width .25s}
+.cart-drawer .drawer-bottom .summary-line{margin:10px 0 0;border:0;padding:0;color:#d5e4ec;font-size:13px}
+.cart-drawer .drawer-bottom .summary-line strong,.cart-drawer .drawer-bottom .summary-line>span:last-child{color:#f4f8fb;font-size:13px}
+.cart-drawer .drawer-bottom .summary-total{margin-top:15px;padding-top:13px;border-top:1px solid #294a5d;color:#fff;font-size:17px;font-weight:750}
+.cart-drawer .drawer-bottom .summary-total strong{font-size:18px}
+.cart-drawer .drawer-bottom .full-button{min-height:48px;margin-top:15px;border-radius:99px;background:#20516c;color:#fff;font-size:13px;letter-spacing:0}
+.cart-drawer .drawer-bottom .full-button:hover{background:#286584}
+.cart-drawer .empty-bag{color:#b5ccd8}
+.cart-drawer .empty-bag .text-link{color:#83d9b5}
+
+/* Manual JazzCash checkout selector */
+.checkout-screen .payment-select-label{color:#abc7d7}
+.checkout-screen .payment-select{width:100%;height:44px;padding:0 12px;border:1px solid #2a5269;border-radius:11px;background:#0e202b;color:#f0f7fb;font:12px var(--sans);outline:none}
+.checkout-screen .payment-select:focus{border-color:#60d5ad;outline:2px solid #60d5ad33}
+.checkout-screen .jazzcash-instructions{margin-top:12px;padding:15px 16px;border-radius:14px;background:#20475d;color:#eff6fa}
+.checkout-screen .jazzcash-instructions[hidden]{display:none}
+.checkout-screen .jazzcash-instructions strong{font-size:12px}
+.checkout-screen .jazzcash-instructions strong span{color:#fff;font-weight:800}
+.checkout-screen .jazzcash-instructions p{margin:6px 0 0;color:#c4dce9;font-size:11px;line-height:1.65}
+.checkout-screen .jazzcash-instructions a{display:inline-block;margin-top:9px;color:#8edabc;font-size:11px;font-weight:700;text-decoration:underline}

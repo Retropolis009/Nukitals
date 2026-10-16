@@ -1,11 +1,41 @@
 const money = value => `Rs. ${Number(value || 0).toLocaleString("en-PK")}`;
 const safe = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 let products = [];
-let cart = JSON.parse(localStorage.getItem("nutikals-cart") || "[]");
+let cart = [];
+let cartReady = false;
+let cartSync = Promise.resolve();
 let activeProduct = null;
 let detailQuantity = 1;
 
-function saveCart() { localStorage.setItem("nutikals-cart", JSON.stringify(cart)); renderCart(); }
+function saveCart() {
+  localStorage.setItem("nutikals-cart", JSON.stringify(cart));
+  renderCart();
+  if (!cartReady) return;
+  const items = cart.map(item => ({ id: item.id, quantity: item.quantity }));
+  cartSync = cartSync.catch(() => {}).then(async () => {
+    const response = await fetch("/api/cart", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Your bag could not be saved.");
+  });
+  cartSync.catch(() => showToast("Your bag could not be saved. Please try again."));
+}
+async function loadCart() {
+  try {
+    const response = await fetch("/api/cart");
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Cart unavailable");
+    cart = (result.items || []).filter(item => getProduct(item.id)).map(item => ({ id: item.id, quantity: Math.max(1, Math.min(10, Number(item.quantity) || 1)) }));
+    if (!cart.length) {
+      let previous = [];
+      try { previous = JSON.parse(localStorage.getItem("nutikals-cart") || "[]"); } catch { previous = []; }
+      cart = Array.isArray(previous) ? previous.filter(item => getProduct(item.id)).map(item => ({ id: item.id, quantity: Math.max(1, Math.min(10, Number(item.quantity) || 1)) })) : [];
+    }
+  } catch {
+    try { const previous = JSON.parse(localStorage.getItem("nutikals-cart") || "[]"); cart = Array.isArray(previous) ? previous : []; } catch { cart = []; }
+  }
+  cartReady = true;
+  if (cart.length) saveCart(); else renderCart();
+}
 function cartCount() { return cart.reduce((sum, item) => sum + item.quantity, 0); }
 function cartSubtotal() { return cart.reduce((sum, item) => sum + ((getProduct(item.id)?.price || 0) * item.quantity), 0); }
 function getProduct(id) { return products.find(product => product.id === id); }
@@ -35,14 +65,22 @@ function changeCart(id, delta) {
 }
 
 function renderCart() {
-  document.querySelectorAll("[data-cart-count]").forEach(el => el.textContent = cartCount());
+  const count = cartCount();
+  document.querySelectorAll("[data-cart-count]").forEach(el => el.textContent = count);
+  document.querySelectorAll("[data-cart-open]").forEach(button => button.setAttribute("aria-label", `Open cart, ${count} ${count === 1 ? "item" : "items"}`));
   document.querySelectorAll("[data-cart-items]").forEach(container => {
     container.innerHTML = cart.length ? cart.map(line => {
       const p = getProduct(line.id); if (!p) return "";
-      return `<article class="cart-line"><img src="${safe(p.image)}" alt=""><div class="cart-line-copy"><a href="/product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a><span>${money(p.price)}</span><div class="cart-quantity"><button data-cart-change="-1" data-id="${safe(p.id)}" aria-label="Remove one ${safe(p.name)}">−</button><span>${line.quantity}</span><button data-cart-change="1" data-id="${safe(p.id)}" aria-label="Add one ${safe(p.name)}">+</button><button class="remove-line" data-cart-remove="${safe(p.id)}">Remove</button></div></div><strong>${money(p.price * line.quantity)}</strong></article>`;
+      return `<article class="cart-line"><img src="${safe(p.image)}" alt=""><div class="cart-line-copy"><a href="/product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a><span>${money(p.price)} each</span><div class="cart-line-actions"><div class="cart-quantity"><button data-cart-change="-1" data-id="${safe(p.id)}" aria-label="Remove one ${safe(p.name)}">−</button><span>${line.quantity}</span><button data-cart-change="1" data-id="${safe(p.id)}" aria-label="Add one ${safe(p.name)}">+</button></div><button class="remove-line" data-cart-remove="${safe(p.id)}">Remove</button></div></div><strong>${money(p.price * line.quantity)}</strong></article>`;
     }).join("") : `<div class="empty-bag"><span>✳</span><p>Your bag is taking a little breather.</p><a href="/#shop" class="text-link">Explore the collection →</a></div>`;
   });
-  document.querySelectorAll("[data-cart-total]").forEach(el => el.textContent = money(cartSubtotal()));
+  const subtotal = cartSubtotal();
+  const shipping = !cart.length ? 0 : subtotal >= 5000 ? 0 : 350;
+  document.querySelectorAll("[data-cart-total]").forEach(el => el.textContent = money(subtotal));
+  document.querySelectorAll("[data-cart-shipping]").forEach(el => el.textContent = !cart.length ? "—" : shipping === 0 ? "Free" : money(shipping));
+  document.querySelectorAll("[data-cart-grand-total]").forEach(el => el.textContent = money(subtotal + shipping));
+  document.querySelectorAll("[data-cart-shipping-message]").forEach(el => el.textContent = subtotal >= 5000 ? "You have unlocked free shipping." : `Spend ${money(5000 - subtotal)} more to unlock free shipping.`);
+  document.querySelectorAll("[data-cart-shipping-progress]").forEach(el => el.style.width = `${Math.min(100, subtotal / 5000 * 100)}%`);
   document.querySelectorAll("[data-cart-change]").forEach(button => button.onclick = () => changeCart(button.dataset.id, Number(button.dataset.cartChange)));
   document.querySelectorAll("[data-cart-remove]").forEach(button => button.onclick = () => { cart = cart.filter(item => item.id !== button.dataset.cartRemove); saveCart(); });
   renderCheckoutSummary();
@@ -129,6 +167,7 @@ function renderCheckoutSummary() {
   const shipping = !cart.length ? 0 : cartSubtotal() >= 5000 ? 0 : 350;
   document.querySelector("[data-summary-shipping]").textContent = !cart.length ? "—" : shipping === 0 ? "Free" : money(shipping);
   document.querySelector("[data-summary-total]").textContent = money(cartSubtotal() + shipping);
+  renderPaymentInstructions(cartSubtotal() + shipping);
   const form = document.querySelector("[data-checkout-form]");
   const empty = !cart.length;
   form?.classList.toggle("cart-empty", empty);
@@ -138,11 +177,16 @@ function renderCheckoutSummary() {
   if (empty && !emptyNote) { emptyNote = document.createElement("p"); emptyNote.dataset.emptyCartNote = ""; emptyNote.className = "empty-cart-note"; emptyNote.innerHTML = `Your bag is empty. <a href="/#shop">Browse the collection →</a>`; form?.prepend(emptyNote); }
   if (!empty) emptyNote?.remove();
 }
+function renderPaymentInstructions(total) {
+  const method = document.querySelector('[name="paymentMethod"]')?.value;
+  const instructions = document.querySelector("[data-jazzcash-instructions]");
+  if (!instructions) return;
+  instructions.hidden = method !== "jazzcash";
+  document.querySelector("[data-jazzcash-amount]").textContent = money(total);
+}
 function setupCheckout() {
   const form = document.querySelector("[data-checkout-form]"); if (!form) return;
-  form.querySelectorAll('input[name="paymentMethod"]').forEach(input => input.addEventListener("change", () => {
-    form.querySelectorAll(".payment-option").forEach(option => option.classList.toggle("selected", option.contains(input) && input.checked));
-  }));
+  form.querySelector('[name="paymentMethod"]')?.addEventListener("change", () => renderPaymentInstructions(cartSubtotal() + (!cart.length ? 0 : cartSubtotal() >= 5000 ? 0 : 350)));
   form.addEventListener("submit", async event => {
     event.preventDefault();
     const message = document.querySelector("[data-form-message]"); const button = document.querySelector("[data-place-order]");
@@ -151,6 +195,7 @@ function setupCheckout() {
     const fields = new FormData(form);
     const payload = { customer: { name: fields.get("name"), phone: fields.get("phone"), email: fields.get("email"), city: fields.get("city"), postalCode: fields.get("postalCode"), address: fields.get("address") }, note: fields.get("note"), paymentMethod: fields.get("paymentMethod"), items: cart };
     try {
+      await cartSync;
       const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "We couldn't place that order. Please try again.");
@@ -171,7 +216,7 @@ document.addEventListener("keydown", event => { if (event.key === "Escape") togg
 document.querySelectorAll("[data-year]").forEach(el => el.textContent = new Date().getFullYear());
 
 fetch("/api/products").then(response => { if (!response.ok) throw new Error("Collection unavailable"); return response.json(); }).then(data => {
-  products = data; renderHome(); renderProduct(); renderCart(); setupCheckout(); setupCarousel();
+  products = data; renderHome(); renderProduct(); setupCheckout(); setupCarousel(); return loadCart();
 }).catch(() => {
   const grid = document.querySelector("[data-product-grid]"); if (grid) grid.innerHTML = '<p class="load-error">The collection could not load. Please refresh the page.</p>';
   const title = document.querySelector("[data-product-title]"); if (title) title.textContent = "Please refresh to view this product.";
