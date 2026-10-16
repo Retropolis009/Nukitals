@@ -54,7 +54,8 @@ function toggleDrawer(open) {
 }
 function renderHome() {
   const grid = document.querySelector("[data-product-grid]"); if (!grid) return;
-  const homeProducts = ["s9", "bareesh", "s11"].map(getProduct).filter(Boolean);
+  const homeOrder = ["s9", "bareesh", "s11"];
+  const homeProducts = [...homeOrder.map(getProduct).filter(Boolean), ...products.filter(product => !homeOrder.includes(product.id))];
   grid.innerHTML = homeProducts.map((p, index) => `<article class="product-card"><a class="card-image image-${safe(p.id)}" href="/product.html?id=${encodeURIComponent(p.id)}"><img src="${safe(p.image)}" alt="${safe(p.name)}" loading="lazy"><span class="card-number">0${index + 1}</span><span class="card-arrow">↗</span></a><div class="card-copy"><div class="card-meta"><span>${safe(p.eyebrow)}</span><span>${safe(p.size)}</span></div><h3><a href="/product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a></h3><p>${safe(p.subtitle)}</p><div class="card-bottom"><div>${p.compareAt ? `<s>${money(p.compareAt)}</s>` : ""}<strong>${money(p.price)}</strong></div><button class="quick-add" data-quick-add="${safe(p.id)}" aria-label="Add ${safe(p.name)} to bag">Add to cart</button></div></div></article>`).join("");
   grid.querySelectorAll("[data-quick-add]").forEach(button => button.onclick = () => addToCart(button.dataset.quickAdd));
 }
