@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Store admin | Nutikals</title>
   <style>
-    :root{color-scheme:light;--ink:#243126;--muted:#68736a;--line:#dce3dc;--paper:#f5f7f3;--green:#244c36;--danger:#9c3027}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}header{background:#fff;border-bottom:1px solid var(--line);padding:18px max(24px,calc((100vw - 1080px)/2));display:flex;justify-content:space-between;align-items:center}header a{color:var(--green)}main{max-width:1080px;margin:38px auto;padding:0 24px}h1{font-size:clamp(28px,5vw,42px);margin:0 0 8px}h2{font-size:22px;margin:0 0 18px}.muted{color:var(--muted)}.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:24px;margin:24px 0;box-shadow:0 8px 30px #1935220a}.login{max-width:460px;margin:54px auto}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}label{font-weight:650;font-size:14px}input,textarea,select{width:100%;border:1px solid #bdc9be;border-radius:8px;padding:10px 12px;font:inherit;color:var(--ink);background:#fff}textarea{min-height:120px;resize:vertical}button{font:inherit;font-weight:650;border:0;border-radius:8px;padding:11px 16px;background:var(--green);color:white;cursor:pointer}button.secondary{background:#edf2ed;color:var(--ink)}button.danger{background:#fff1ef;color:var(--danger)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}.message{min-height:24px;margin:12px 0 0}.message.error{color:var(--danger)}.product{display:grid;grid-template-columns:74px minmax(0,1fr) auto;gap:16px;align-items:center;border-top:1px solid var(--line);padding:14px 0}.product img{width:74px;height:74px;object-fit:cover;border-radius:8px;background:#edf2ed}.product h3{margin:0 0 3px;font-size:17px}.product p{margin:0;color:var(--muted);font-size:14px}.product-actions{display:flex;gap:8px}.hidden{display:none!important}.topline{display:flex;justify-content:space-between;align-items:center;gap:16px}.help{font-size:13px;color:var(--muted)}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin:22px 0}.tabs button{background:transparent;color:var(--muted);border-radius:8px 8px 0 0}.tabs button.active{background:#e7efe8;color:var(--green)}.order-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center}.order-list{display:grid;gap:14px}.order-card{border:1px solid var(--line);border-radius:12px;padding:20px;background:#fff}.order-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:14px}.order-head h3{margin:0;font-size:18px}.order-head p,.order-meta p{margin:4px 0;color:var(--muted);font-size:14px}.order-total{font-size:19px;font-weight:750;white-space:nowrap}.order-body{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;padding:16px 0}.order-body h4{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}.order-lines{margin:0;padding-left:18px}.order-lines li{padding:2px 0}.order-controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:15px}.order-controls label{min-width:165px}.order-controls button{height:42px}.filter{max-width:190px}.empty-state{padding:28px 12px;text-align:center;color:var(--muted)}@media(max-width:650px){main{margin:24px auto;padding:0 16px}.panel{padding:18px}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.product{grid-template-columns:58px minmax(0,1fr)}.product img{width:58px;height:58px}.product-actions{grid-column:2}.topline{align-items:flex-start;flex-direction:column}.order-body{grid-template-columns:1fr}.order-head{flex-direction:column}.order-toolbar{align-items:stretch;flex-direction:column}}
+    :root{color-scheme:light;--ink:#243126;--muted:#68736a;--line:#dce3dc;--paper:#f5f7f3;--green:#244c36;--danger:#9c3027}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}header{background:#fff;border-bottom:1px solid var(--line);padding:18px max(24px,calc((100vw - 1080px)/2));display:flex;justify-content:space-between;align-items:center}header a{color:var(--green)}main{max-width:1080px;margin:38px auto;padding:0 24px}h1{font-size:clamp(28px,5vw,42px);margin:0 0 8px}h2{font-size:22px;margin:0 0 18px}.muted{color:var(--muted)}.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:24px;margin:24px 0;box-shadow:0 8px 30px #1935220a}.login{max-width:460px;margin:54px auto}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}label{font-weight:650;font-size:14px}input,textarea,select{width:100%;border:1px solid #bdc9be;border-radius:8px;padding:10px 12px;font:inherit;color:var(--ink);background:#fff}textarea{min-height:120px;resize:vertical}button{font:inherit;font-weight:650;border:0;border-radius:8px;padding:11px 16px;background:var(--green);color:white;cursor:pointer}button.secondary{background:#edf2ed;color:var(--ink)}button.danger{background:#fff1ef;color:var(--danger)}button:disabled{opacity:.55;cursor:wait}.actions{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}.message{min-height:24px;margin:12px 0 0}.message.error{color:var(--danger)}.product{display:grid;grid-template-columns:74px minmax(0,1fr) auto;gap:16px;align-items:center;border-top:1px solid var(--line);padding:14px 0}.product img{width:74px;height:74px;object-fit:cover;border-radius:8px;background:#edf2ed}.product h3{margin:0 0 3px;font-size:17px}.product p{margin:0;color:var(--muted);font-size:14px}.product-actions{display:flex;gap:8px}.hidden{display:none!important}.topline{display:flex;justify-content:space-between;align-items:center;gap:16px}.help{font-size:13px;color:var(--muted)}.tabs{display:flex;gap:8px;border-bottom:1px solid var(--line);margin:22px 0}.tabs button{background:transparent;color:var(--muted);border-radius:8px 8px 0 0}.tabs button.active{background:#e7efe8;color:var(--green)}.order-toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center}.order-list{display:grid;gap:14px}.order-card{border:1px solid var(--line);border-radius:12px;padding:20px;background:#fff}.order-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;border-bottom:1px solid var(--line);padding-bottom:14px}.order-head h3{margin:0;font-size:18px}.order-head p,.order-meta p{margin:4px 0;color:var(--muted);font-size:14px}.order-total{font-size:19px;font-weight:750;white-space:nowrap}.order-body{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;padding:16px 0}.order-body h4{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}.order-lines{margin:0;padding-left:18px}.order-lines li{padding:2px 0}.order-controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:15px}.order-controls label{min-width:165px}.order-controls button{height:42px}.filter{max-width:190px}.empty-state{padding:28px 12px;text-align:center;color:var(--muted)}.content-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.85fr);gap:22px;align-items:start}.content-preview{position:sticky;top:16px}.content-preview iframe{width:100%;height:min(78vh,850px);border:1px solid var(--line);border-radius:12px;background:#fff}.image-preview{display:flex;gap:8px;flex-wrap:wrap}.image-preview img{width:84px;height:84px;object-fit:cover;border:1px solid var(--line);border-radius:8px;background:#f4f4f4}.image-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}@media(max-width:850px){.content-layout{grid-template-columns:1fr}.content-preview{position:static}.content-preview iframe{height:650px}}@media(max-width:650px){main{margin:24px auto;padding:0 16px}.panel{padding:18px}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.product{grid-template-columns:58px minmax(0,1fr)}.product img{width:58px;height:58px}.product-actions{grid-column:2}.topline{align-items:flex-start;flex-direction:column}.order-body{grid-template-columns:1fr}.order-head{flex-direction:column}.order-toolbar{align-items:stretch;flex-direction:column}}
   </style>
 </head>
 <body>
@@ -40,12 +40,12 @@
             <div class="field"><label for="product-id">ID</label><input id="product-id" name="id" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="e.g. s9" required></div>
             <div class="field"><label for="product-name">Name</label><input id="product-name" name="name" maxlength="160" required></div>
             <div class="field"><label for="product-price">Price (Rs.)</label><input id="product-price" name="price" type="number" min="0.01" step="0.01" required></div>
-            <div class="field"><label for="product-image">Image URL or path</label><input id="product-image" name="image_url" maxlength="1000" placeholder="./images/product.jpg" required></div>
+            <div class="field"><label for="product-image">Main image path or URL</label><input id="product-image" name="image_url" maxlength="1000" placeholder="/images/product.jpg" required><div class="image-actions"><input id="product-image-file" type="file" accept="image/jpeg,image/png,image/webp"><span class="help">JPEG, PNG, WebP · up to 5 MB</span></div><div id="main-image-preview" class="image-preview" aria-live="polite"></div></div>
             <div class="field"><label for="product-subtitle">Subtitle</label><input id="product-subtitle" name="subtitle" maxlength="500"></div>
             <div class="field"><label for="product-size">Size</label><input id="product-size" name="size" maxlength="100"></div>
             <div class="field"><label for="product-eyebrow">Eyebrow / category</label><input id="product-eyebrow" name="eyebrow" maxlength="200"></div>
             <div class="field"><label for="product-intro">Product page introduction</label><input id="product-intro" name="intro" maxlength="2000"></div>
-            <div class="field full"><label for="product-gallery">Gallery image paths or URLs (one per line)</label><textarea id="product-gallery" name="gallery" maxlength="12000" placeholder="/images/product.jpg"></textarea></div>
+            <div class="field full"><label for="product-gallery">Gallery image paths or URLs (one per line)</label><textarea id="product-gallery" name="gallery" maxlength="12000" placeholder="/images/product.jpg"></textarea><div class="image-actions"><input id="gallery-image-files" type="file" accept="image/jpeg,image/png,image/webp" multiple><span class="help">Choose multiple images to upload them to the gallery.</span></div><div id="gallery-image-preview" class="image-preview" aria-live="polite"></div></div>
             <div class="field full"><label for="product-notes">Product notes (one per line)</label><textarea id="product-notes" name="notes" maxlength="4000"></textarea></div>
             <div class="field full"><label for="product-description">Description</label><textarea id="product-description" name="description" maxlength="5000" required></textarea></div>
           </div>
@@ -55,7 +55,7 @@
       <section class="panel"><div class="topline"><h2>Current catalog</h2><button id="refresh" class="secondary">Refresh</button></div><div id="product-list" class="muted">Loading…</div><p id="list-message" class="message" role="status"></p></section>
       </section>
       <section id="content-view" class="hidden">
-        <section class="panel"><div class="topline"><div><h2>Website Content</h2><p class="muted">Edit storefront copy and links. Delivery prices, thresholds, and checkout behavior remain controlled by store settings.</p></div><div class="actions"><button id="reload-content" type="button" class="secondary">Reload saved content</button></div></div><div id="content-editor" class="grid"></div><div class="actions"><button id="save-content" type="button">Save website content</button><span id="content-message" class="help" role="status"></span></div></section>
+        <section class="panel"><div class="topline"><div><h2>Website Content</h2><p class="muted">Edit storefront copy and links. Delivery prices, thresholds, and checkout behavior remain controlled by store settings.</p></div><div class="actions"><label for="preview-page">Preview page</label><select id="preview-page"><option value="./?preview=1">Homepage</option><option value="./product.html?id=s9&amp;preview=1">Product page</option></select><button id="reload-content" type="button" class="secondary">Reload saved content</button></div></div><div class="content-layout"><div id="content-editor" class="grid"></div><aside class="content-preview"><h3>Live storefront preview</h3><p class="help">Unsaved text and links appear here as you type.</p><iframe id="content-preview" title="Live storefront content preview" src="./?preview=1"></iframe></aside></div><div class="actions"><button id="save-content" type="button">Save website content</button><span id="content-message" class="help" role="status"></span></div></section>
       </section>
       <section id="orders-view" class="hidden">
         <section class="panel">
@@ -94,6 +94,36 @@
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Request failed.");
       return result;
+    }
+    function broadcastContentPreview() {
+      const preview = document.querySelector("#content-preview");
+      if (!preview?.contentWindow) return;
+      const content = Object.fromEntries([...document.querySelectorAll("[data-content-key]")].map(input => [input.dataset.contentKey, input.value]));
+      const product = Object.fromEntries([...productForm.elements].filter(input => input.name).map(input => [input.name, input.value]));
+      product.gallery = product.gallery?.split(/\r?\n/).map(value => value.trim()).filter(Boolean) || [];
+      product.notes = product.notes?.split(/\r?\n/).map(value => value.trim()).filter(Boolean) || [];
+      preview.contentWindow.postMessage({ type: "nutikals-content-preview", content, product }, location.origin);
+    }
+    function paintImagePreview(container, urls) {
+      container.replaceChildren();
+      for (const url of urls.filter(Boolean).slice(0, 12)) {
+        const image = document.createElement("img"); image.src = url; image.alt = "Image preview"; image.loading = "lazy";
+        image.onerror = () => { image.alt = "Image could not be loaded"; image.classList.add("error"); };
+        container.append(image);
+      }
+    }
+    function refreshProductImagePreviews() {
+      paintImagePreview(document.querySelector("#main-image-preview"), [document.querySelector("#product-image").value]);
+      const gallery = document.querySelector("#product-gallery").value.split(/\r?\n/).map(value => value.trim());
+      paintImagePreview(document.querySelector("#gallery-image-preview"), gallery);
+      broadcastContentPreview();
+    }
+    async function uploadImage(file) {
+      if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) throw new Error("Choose a JPEG, PNG, or WebP image up to 5 MB.");
+      const response = await fetch("./api/admin/uploads", { method: "POST", headers: { Authorization: authHeader, "Content-Type": file.type }, body: file });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Image upload failed.");
+      return result.url;
     }
     function message(target, text, isError = false) { target.textContent = text; target.classList.toggle("error", isError); }
     function drawProducts() {
@@ -172,9 +202,10 @@
           if (key === "shipping_progress") input.placeholder = "Use {amount} for the remaining amount";
           if (key === "announcement") input.placeholder = "Use {threshold} to show the current free-shipping threshold";
           if (key.endsWith("_url")) { input.type = "url"; input.placeholder = "https://? or #section"; input.type = "text"; }
-          input.value = content[key] || ""; wrap.append(label, input); editor.append(wrap);
+          input.value = content[key] || ""; input.addEventListener("input", broadcastContentPreview); wrap.append(label, input); editor.append(wrap);
         }
       }
+      broadcastContentPreview();
     }
     async function refreshContent() {
       const messageEl = document.querySelector("#content-message"); message(messageEl, "Loading saved content?");
@@ -270,8 +301,32 @@
     });
     document.querySelector("#save-content").onclick = saveContent;
     document.querySelector("#reload-content").onclick = refreshContent;
+    document.querySelector("#content-preview").addEventListener("load", broadcastContentPreview);
+    document.querySelector("#preview-page").addEventListener("change", event => { document.querySelector("#content-preview").src = event.target.value; });
+    document.querySelector("#product-image").addEventListener("input", refreshProductImagePreviews);
+    document.querySelector("#product-gallery").addEventListener("input", refreshProductImagePreviews);
+    productForm.addEventListener("input", broadcastContentPreview);
+    document.querySelector("#product-image-file").addEventListener("change", async event => {
+      const file = event.target.files[0]; if (!file) return;
+      const input = document.querySelector("#product-image"); input.disabled = true;
+      try { input.value = await uploadImage(file); refreshProductImagePreviews(); message(document.querySelector("#form-message"), "Main image uploaded. Save the product to publish it."); }
+      catch (error) { message(document.querySelector("#form-message"), error.message, true); }
+      finally { input.disabled = false; event.target.value = ""; }
+    });
+    document.querySelector("#gallery-image-files").addEventListener("change", async event => {
+      const files = [...event.target.files]; if (!files.length) return;
+      const input = document.querySelector("#product-gallery"); input.disabled = true;
+      try {
+        const uploaded = [];
+        for (const file of files) uploaded.push(await uploadImage(file));
+        input.value = [...input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean), ...uploaded].join("\n");
+        refreshProductImagePreviews(); message(document.querySelector("#form-message"), `${uploaded.length} gallery image${uploaded.length === 1 ? "" : "s"} uploaded. Save the product to publish them.`);
+      } catch (error) { message(document.querySelector("#form-message"), error.message, true); }
+      finally { input.disabled = false; event.target.value = ""; }
+    });
     document.querySelector("#open-content").onclick = () => document.querySelector('[data-tab="content"]').click();
     document.querySelector("#sign-out").onclick = () => { authHeader = ""; products = []; orders = []; dashboard.classList.add("hidden"); login.classList.remove("hidden"); loginForm.reset(); message(loginMessage, ""); };
+    refreshProductImagePreviews();
   </script>
 </body>
 </html>

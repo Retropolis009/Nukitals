@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("node:path");
+const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
 const pool = require("./db");
 const productDetails = require("./products");
@@ -414,6 +415,31 @@ app.get(["/admin", "/admin.html"], (req, res) => {
 
 const adminRouter = express.Router();
 adminRouter.use(requireAdmin);
+
+adminRouter.post("/uploads", express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "5mb" }), async (req, res) => {
+  const bytes = req.body;
+  if (!Buffer.isBuffer(bytes) || bytes.length < 12) return res.status(400).json({ error: "Upload a JPEG, PNG, or WebP image up to 5 MB." });
+  let extension;
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff && bytes.at(-2) === 0xff && bytes.at(-1) === 0xd9) {
+    const hasFrame = [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].some(marker => bytes.indexOf(Buffer.from([0xff, marker]), 2) >= 0);
+    if (hasFrame && bytes.indexOf(Buffer.from([0xff, 0xda]), 2) >= 0) extension = ".jpg";
+  } else if (bytes.length >= 33 && bytes.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])
+    ) && bytes.toString("ascii", 12, 16) === "IHDR" && bytes.readUInt32BE(16) > 0 && bytes.readUInt32BE(20) > 0 && bytes.toString("ascii", bytes.length - 8, bytes.length - 4) === "IEND") extension = ".png";
+  else if (bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP" && bytes.readUInt32LE(4) === bytes.length - 8) extension = ".webp";
+  if (!extension) return res.status(415).json({ error: "The uploaded file content is not a supported JPEG, PNG, or WebP image." });
+  const expectedExtension = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" }[req.get("Content-Type")];
+  if (expectedExtension !== extension) return res.status(415).json({ error: "The image content does not match its declared file type." });
+  const filename = `${crypto.randomUUID()}${extension}`;
+  const uploadDirectory = path.join(PUBLIC, "uploads");
+  try {
+    await fs.mkdir(uploadDirectory, { recursive: true });
+    await fs.writeFile(path.join(uploadDirectory, filename), bytes, { flag: "wx", mode: 0o644 });
+    res.status(201).json({ url: `/uploads/${filename}` });
+  } catch (error) {
+    console.error("Could not store uploaded image:", error);
+    res.status(503).json({ error: "Could not store the image. Check that the site's upload directory is writable and persistent." });
+  }
+});
 
 adminRouter.get("/site-content", async (req, res) => {
   try { res.json(await readSiteContent()); }

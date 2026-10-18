@@ -9,6 +9,7 @@ let detailQuantity = 1;
 let deliveryFee = 350;
 let freeShippingThreshold = 5000;
 let publicContent = {};
+let previewProductDraft = null;
 const pendingOrderKeyStorage = "nutikals-pending-order-key";
 
 // Public marketing copy is optional; existing HTML remains the fallback.
@@ -30,6 +31,19 @@ fetch("./api/site-content", { cache: "no-store" }).then(response => response.ok 
   publicContent = content;
   applyPublicContent();
 }).catch(() => {});
+window.addEventListener("message", event => {
+  if (window.parent === window || event.source !== window.parent || event.origin !== location.origin || event.data?.type !== "nutikals-content-preview") return;
+  const content = event.data.content;
+  if (!content || typeof content !== "object" || Array.isArray(content)) return;
+  publicContent = { ...publicContent, ...content };
+  if (event.data.product && typeof event.data.product === "object" && !Array.isArray(event.data.product)) previewProductDraft = event.data.product;
+  applyPublicContent();
+  if (previewProductDraft && previewProductDraft.id === new URLSearchParams(location.search).get("id")) renderProduct();
+});
+function productForDisplay(product) {
+  if (!previewProductDraft || previewProductDraft.id !== product.id) return product;
+  return { ...product, ...previewProductDraft, image: previewProductDraft.image_url || product.image, gallery: previewProductDraft.gallery?.length ? previewProductDraft.gallery : [previewProductDraft.image_url || product.image] };
+}
 
 function newCheckoutAttemptKey() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -138,14 +152,14 @@ function renderHome() {
   const grid = document.querySelector("[data-product-grid]"); if (!grid) return;
   const homeOrder = ["s9", "bareesh", "s11"];
   const homeProducts = [...homeOrder.map(getProduct).filter(Boolean), ...products.filter(product => !homeOrder.includes(product.id))];
-  grid.innerHTML = homeProducts.map((p, index) => `<article class="product-card"><a class="card-image image-${safe(p.id)}" href="./product.html?id=${encodeURIComponent(p.id)}"><img src="${safe(p.image)}" alt="${safe(p.name)}" loading="lazy"><span class="card-number">0${index + 1}</span><span class="card-arrow">↗</span></a><div class="card-copy"><div class="card-meta"><span>${safe(p.eyebrow)}</span><span>${safe(p.size)}</span></div><h3><a href="./product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a></h3><p>${safe(p.subtitle)}</p><div class="card-bottom"><div>${p.compareAt ? `<s>${money(p.compareAt)}</s>` : ""}<strong>${money(p.price)}</strong></div><button class="quick-add" data-quick-add="${safe(p.id)}" aria-label="Add ${safe(p.name)} to bag">Add to cart</button></div></div></article>`).join("");
+  grid.innerHTML = homeProducts.map((item, index) => { const p = productForDisplay(item); return `<article class="product-card"><a class="card-image image-${safe(p.id)}" href="./product.html?id=${encodeURIComponent(p.id)}"><img src="${safe(p.image)}" alt="${safe(p.name)}" loading="lazy"><span class="card-number">0${index + 1}</span><span class="card-arrow">↗</span></a><div class="card-copy"><div class="card-meta"><span>${safe(p.eyebrow)}</span><span>${safe(p.size)}</span></div><h3><a href="./product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a></h3><p>${safe(p.subtitle)}</p><div class="card-bottom"><div>${p.compareAt ? `<s>${money(p.compareAt)}</s>` : ""}<strong>${money(p.price)}</strong></div><button class="quick-add" data-quick-add="${safe(p.id)}" aria-label="Add ${safe(p.name)} to bag">Add to cart</button></div></div></article>`; }).join("");
   grid.querySelectorAll("[data-quick-add]").forEach(button => button.onclick = () => addToCart(button.dataset.quickAdd));
 }
 let carouselIndex = 1;
 let carouselTimer;
 function renderCarousel() {
   const image = document.querySelector("[data-carousel-image]"); if (!image) return;
-  const product = products[carouselIndex];
+  const product = productForDisplay(products[carouselIndex]);
   document.querySelector("[data-carousel-link]").href = `./product.html?id=${encodeURIComponent(product.id)}`;
   image.src = product.image; image.alt = product.name;
   document.querySelector("[data-carousel-title]").textContent = product.name;
@@ -172,7 +186,7 @@ function renderProduct() {
   const view = document.querySelector("[data-product-detail]"); if (!view) return;
   activeProduct = getProduct(new URLSearchParams(location.search).get("id"));
   if (!activeProduct) { document.querySelector("[data-product-title]").textContent = "We couldn't find that product"; document.querySelector("[data-product-subtitle]").textContent = "Explore the collection to find your ritual."; return; }
-  const p = activeProduct;
+  const p = productForDisplay(activeProduct);
   document.title = `${p.name} — Nutikals`;
   document.querySelector("[data-product-name]").textContent = p.name;
   document.querySelector("[data-product-eyebrow]").textContent = p.eyebrow;

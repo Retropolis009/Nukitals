@@ -164,6 +164,24 @@ test("site content and product descriptions are public, authenticated for editin
   });
   assert.equal(injection.status, 400);
 
+  const rejectedUpload = await fetch(`http://127.0.0.1:${port}/api/admin/uploads`, {
+    method: "POST", headers: { Authorization: authorization, "Content-Type": "image/png" }, body: Buffer.from("this is not a png image")
+  });
+  assert.equal(rejectedUpload.status, 415);
+  const onePixelPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/INcAAAAASUVORK5CYII=", "base64");
+  let uploadedPath;
+  try {
+    const upload = await fetch(`http://127.0.0.1:${port}/api/admin/uploads`, {
+      method: "POST", headers: { Authorization: authorization, "Content-Type": "image/png" }, body: onePixelPng
+    });
+    assert.equal(upload.status, 201);
+    const uploaded = await upload.json();
+    uploadedPath = path.join(__dirname, "..", "public", uploaded.url.slice(1));
+    const served = await fetch(`http://127.0.0.1:${port}${uploaded.url}`);
+    assert.equal(served.status, 200);
+    assert.equal(served.headers.get("content-type"), "image/png");
+  } finally { if (uploadedPath && fs.existsSync(uploadedPath)) fs.unlinkSync(uploadedPath); }
+
   const productSave = await fetch(`http://127.0.0.1:${port}/api/admin/products/test-product`, {
     method: "PUT", headers: adminHeaders, body: JSON.stringify({ id: "test-product", name: "Local test product", price: 1000, image_url: "/images/test.jpg", description: "Core description", subtitle: "Editable subtitle", size: "50 ml", gallery: ["/images/test.jpg", "https://example.com/test.jpg"], eyebrow: "TEST", intro: "Editable intro", notes: ["Editable note"] })
   });
