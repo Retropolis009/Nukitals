@@ -17,7 +17,7 @@ Open `http://localhost:3000`.
 
 Copy `.env.example` to `.env` and set the PostgreSQL connection values and a long, unique `ADMIN_PASSWORD`. The `.env` file is ignored by Git. Start the app with `npm start`, then open `http://localhost:3000/admin` and sign in with `ADMIN_USER` and `ADMIN_PASSWORD`.
 
-The public catalog and admin product editor use the `products` table with `id`, `name`, `price`, `description`, and `image_url` columns. Admin users can add, edit, and delete products. Existing product copy and gallery details are still supplied by `products.js` where the database schema has no corresponding fields.
+The public catalog and admin product editor use the `products` table with `id`, `name`, `price`, `description`, and `image_url` columns. Product presentation fields are stored by product ID in `product_content`, so existing product identities and pricing remain the source of truth.
 
 Run the SQL in `db/migrations/001_guest_carts.sql` once against the database to create guest cart tables. Guest carts are tied to an HTTP-only browser cookie and last 90 days; they do not sync across devices. Set `CART_COOKIE_SECRET` to a long random value (the app falls back to `DB_PASSWORD` if it is unset).
 
@@ -25,7 +25,17 @@ Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`,
 
 The admin API uses HTTP Basic credentials over HTTPS in production. Do not expose the admin route over plain HTTP on a public network.
 
-Run `db/migrations/002_orders.sql` once against the database to create `orders` and `order_items`, then apply `db/migrations/004_order_idempotency.sql` before deploying the idempotent checkout update. Store settings are created automatically the first time the app reads or saves delivery pricing; `db/migrations/003_store_settings.sql` is also available for migration-managed deployments. The dashboard includes recent orders, customer and delivery details, line items, controls for order and payment status, and a delivery fee setting.
+Run `db/migrations/002_orders.sql` once against the database to create `orders` and `order_items`, then apply `db/migrations/004_order_idempotency.sql` before deploying the idempotent checkout update. Apply `db/migrations/005_content_editor.sql` for migration-managed deployments. The app also creates the content tables safely on first use and seeds defaults with conflict-safe inserts; it never replaces existing saved content. Store settings are created automatically the first time the app reads or saves delivery pricing; `db/migrations/003_store_settings.sql` is also available. The dashboard includes recent orders, customer and delivery details, line items, controls for order and payment status, and a separate delivery fee setting.
+
+## Editing the website
+
+Sign in at `/admin` and use the **Website Content** tab for marketing text and links. Edit fields and choose **Save website content**; use **Reload saved content** to discard unsaved edits and load the stored values again. Text appears on the storefront and checkout without editing source files.
+
+The Website Content editor covers the announcement and homepage hero buttons, featured and brand-story headings, hair/skin/beard descriptions, delivery timing and free-shipping messages, homepage payment and confirmation text, checkout payment/confirmation guidance, three review quotes and names, footer tagline, and WhatsApp/Facebook/Instagram destinations. Use `{threshold}` in the announcement to show the live free-shipping threshold, and `{amount}` in the cart progress message for the remaining amount. The threshold and delivery fee shown to customers are read from trusted store settings; content edits do not change order totals, payment instructions behavior, or checkout validation.
+
+Use the **Products** tab to edit the existing product record. In addition to its name, description, price, and main image, each product can have a subtitle, size, eyebrow/category, product-page introduction, gallery images, and notes. Enter one gallery image path or URL per line and one product note per line. Existing local paths such as `/images/product.jpg` work, and the existing product IDs remain unchanged. Gallery links accept local paths and HTTP(S) URLs. Secure image uploads are not included; add image files through the site's existing hosting/deployment workflow, then enter their paths here.
+
+The public content endpoint is `GET /api/site-content`. Admin content endpoints are `GET /api/admin/site-content` and `PUT /api/admin/site-content`; they require the existing admin Basic authentication. Product presentation is returned with the existing `/api/products` response and saved through existing product admin routes.
 
 ## Store behavior
 

@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const pool = require("./db");
 const productDetails = require("./products");
 const nodemailer = require("nodemailer");
+const siteContent = require("./site-content");
 
 const PUBLIC = path.join(__dirname, "public");
 const PORT = Number(process.env.PORT || 3000);
@@ -11,6 +12,48 @@ const CART_COOKIE = "nutikals_cart";
 const CART_SECRET = process.env.CART_COOKIE_SECRET || process.env.DB_PASSWORD || "";
 const FREE_SHIPPING_THRESHOLD = 5000;
 let storeSettingsReady;
+let siteContentReady;
+let productContentReady;
+
+async function ensureProductContent() {
+  if (!productContentReady) {
+    productContentReady = (async () => {
+      await pool.query(`CREATE TABLE IF NOT EXISTS product_content (
+        product_id varchar(40) PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE,
+        subtitle varchar(500) NOT NULL DEFAULT '', size varchar(100) NOT NULL DEFAULT '',
+        gallery jsonb NOT NULL DEFAULT '[]'::jsonb, eyebrow varchar(200) NOT NULL DEFAULT '',
+        intro varchar(2000) NOT NULL DEFAULT '', notes jsonb NOT NULL DEFAULT '[]'::jsonb,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      for (const product of productDetails) await pool.query(`INSERT INTO product_content (product_id, subtitle, size, gallery, eyebrow, intro, notes)
+        SELECT $1::varchar(40),$2,$3,$4::jsonb,$5,$6,$7::jsonb WHERE EXISTS (SELECT 1 FROM products WHERE id=$1::varchar(40))
+        ON CONFLICT (product_id) DO NOTHING`, [product.id, product.subtitle || "", product.size || "", JSON.stringify(product.gallery || []), product.eyebrow || "", product.intro || "", JSON.stringify(product.notes || [])]);
+    })().catch(error => { productContentReady = null; throw error; });
+  }
+  return productContentReady;
+}
+
+async function ensureSiteContent() {
+  if (!siteContentReady) {
+    siteContentReady = (async () => {
+      await pool.query(`CREATE TABLE IF NOT EXISTS site_content (
+        content_key varchar(80) PRIMARY KEY,
+        content_value text NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      const entries = Object.entries(siteContent.fields);
+      await pool.query(`INSERT INTO site_content (content_key,content_value)
+        SELECT * FROM unnest($1::varchar[], $2::text[]) ON CONFLICT (content_key) DO NOTHING`, [entries.map(([key]) => key), entries.map(([, value]) => value)]);
+    })().catch(error => { siteContentReady = null; throw error; });
+  }
+  return siteContentReady;
+}
+
+async function readSiteContent() {
+  await ensureSiteContent();
+  const result = await pool.query("SELECT content_key, content_value FROM site_content");
+  return { ...siteContent.fields, ...Object.fromEntries(result.rows.map(row => [row.content_key, row.content_value])) };
+}
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -66,12 +109,37 @@ function validateProduct(body = {}) {
   const imageUrl = clean(body.image_url, 1000);
   const price = Number(body.price);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) throw new Error("ID must use lowercase letters, numbers, and hyphens.");
-  if (!name || !description || !imageUrl || !Number.isFinite(price) || price <= 0) throw new Error("Provide a name, positive price, description, and image URL.");
-  return { id, name, price, description, image_url: imageUrl };
+  if (!name || !description || !imageUrl || !isLocalOrHttpUrl(imageUrl) || !Number.isFinite(price) || price <= 0) throw new Error("Provide a name, positive price, description, and a local or HTTP(S) image URL.");
+  const gallery = body.gallery === undefined ? undefined : normalizeProductList(body.gallery, 12, 1000, "gallery image");
+  const notes = body.notes === undefined ? undefined : normalizeProductList(body.notes, 12, 300, "product note");
+  const extra = {};
+  for (const [key, max] of Object.entries({ subtitle: 500, size: 100, eyebrow: 200, intro: 2000 })) {
+    if (body[key] !== undefined) {
+      if (typeof body[key] !== "string" || body[key].trim().length > max) throw new Error(`Invalid ${key}.`);
+      extra[key] = body[key].trim();
+    }
+  }
+  if (gallery !== undefined) extra.gallery = gallery;
+  if (notes !== undefined) extra.notes = notes;
+  return { id, name, price, description, image_url: imageUrl, ...extra };
+}
+
+function isLocalOrHttpUrl(value) {
+  if (value.startsWith("/") || value.startsWith("./") || value.startsWith("../")) return true;
+  try { return ["http:", "https:"].includes(new URL(value).protocol); } catch { return false; }
+}
+
+function normalizeProductList(value, maxItems, maxLength, label) {
+  if (!Array.isArray(value) || value.length > maxItems || value.some(item => typeof item !== "string" || !item.trim() || item.trim().length > maxLength)) throw new Error(`Provide up to ${maxItems} valid ${label}s.`);
+  const items = value.map(item => item.trim());
+  if (label === "gallery image" && items.some(item => !isLocalOrHttpUrl(item))) throw new Error("Gallery images must use a local path or HTTP(S) URL.");
+  return items;
 }
 
 function presentProduct(row) {
   const details = productDetails.find(item => item.id === row.id) || {};
+  const saved = row.product_content || {};
+  const hasSavedContent = saved.subtitle !== null && saved.subtitle !== undefined;
   return {
     ...details,
     id: row.id,
@@ -79,13 +147,30 @@ function presentProduct(row) {
     price: Number(row.price),
     description: row.description,
     image: row.image_url,
-    subtitle: details.subtitle || "",
-    size: details.size || "",
-    gallery: details.gallery || [row.image_url],
-    eyebrow: details.eyebrow || "",
-    intro: details.intro || row.description,
-    notes: details.notes || []
+    subtitle: saved.subtitle ?? details.subtitle ?? "",
+    size: saved.size ?? details.size ?? "",
+    gallery: hasSavedContent ? saved.gallery : details.gallery || [row.image_url],
+    eyebrow: saved.eyebrow ?? details.eyebrow ?? "",
+    intro: saved.intro || details.intro || row.description,
+    notes: hasSavedContent ? saved.notes : details.notes || []
   };
+}
+
+async function saveProductContent(product) {
+  const legacy = productDetails.find(item => item.id === product.id) || {};
+  const value = {
+    subtitle: product.subtitle ?? legacy.subtitle ?? "",
+    size: product.size ?? legacy.size ?? "",
+    gallery: product.gallery ?? legacy.gallery ?? [product.image_url],
+    eyebrow: product.eyebrow ?? legacy.eyebrow ?? "",
+    intro: product.intro ?? legacy.intro ?? product.description,
+    notes: product.notes ?? legacy.notes ?? []
+  };
+  await ensureProductContent();
+  await pool.query(`INSERT INTO product_content (product_id,subtitle,size,gallery,eyebrow,intro,notes,updated_at)
+    VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7::jsonb,now()) ON CONFLICT (product_id) DO UPDATE SET
+    subtitle=EXCLUDED.subtitle,size=EXCLUDED.size,gallery=EXCLUDED.gallery,eyebrow=EXCLUDED.eyebrow,
+    intro=EXCLUDED.intro,notes=EXCLUDED.notes,updated_at=now()`, [product.id, value.subtitle, value.size, JSON.stringify(value.gallery), value.eyebrow, value.intro, JSON.stringify(value.notes)]);
 }
 
 function signCartId(id) {
@@ -292,8 +377,16 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "20kb" }));
 
 app.get("/api/products", async (req, res) => {
-  const result = await pool.query("SELECT id, name, price, description, image_url FROM products ORDER BY id");
+  await ensureProductContent();
+  const result = await pool.query(`SELECT p.id,p.name,p.price,p.description,p.image_url,
+    json_build_object('subtitle',c.subtitle,'size',c.size,'gallery',c.gallery,'eyebrow',c.eyebrow,'intro',c.intro,'notes',c.notes) AS product_content
+    FROM products p LEFT JOIN product_content c ON c.product_id=p.id ORDER BY p.id`);
   res.json(result.rows.map(presentProduct));
+});
+
+app.get("/api/site-content", async (req, res) => {
+  try { res.json(await readSiteContent()); }
+  catch (error) { console.error("Could not load site content:", error); res.status(503).json({ error: "Website content is temporarily unavailable." }); }
 });
 
 app.get("/api/store-settings", async (req, res) => {
@@ -322,9 +415,32 @@ app.get(["/admin", "/admin.html"], (req, res) => {
 const adminRouter = express.Router();
 adminRouter.use(requireAdmin);
 
+adminRouter.get("/site-content", async (req, res) => {
+  try { res.json(await readSiteContent()); }
+  catch (error) { console.error("Could not load site content:", error); res.status(503).json({ error: "Could not load website content." }); }
+});
+
+adminRouter.put("/site-content", async (req, res) => {
+  const values = req.body;
+  if (!values || typeof values !== "object" || Array.isArray(values) || Buffer.byteLength(JSON.stringify(values), "utf8") > 12000) return res.status(400).json({ error: "Invalid or oversized content payload." });
+  const keys = Object.keys(values);
+  if (!keys.length || keys.some(key => !Object.hasOwn(siteContent.fields, key))) return res.status(400).json({ error: "Unknown content field." });
+  for (const [key, value] of Object.entries(values)) {
+    if (typeof value !== "string" || value.trim().length > siteContent.limits[key] || /[\u0000]/.test(value) || (siteContent.urls.has(key) && !siteContent.validUrl(value.trim()))) return res.status(400).json({ error: `Invalid value for ${key}.` });
+  }
+  try {
+    await ensureSiteContent();
+    for (const [key, value] of Object.entries(values)) await pool.query("INSERT INTO site_content (content_key, content_value, updated_at) VALUES ($1, $2, now()) ON CONFLICT (content_key) DO UPDATE SET content_value = EXCLUDED.content_value, updated_at = now()", [key, value.trim()]);
+    res.json(await readSiteContent());
+  } catch (error) { console.error("Could not save site content:", error); res.status(503).json({ error: "Could not save website content." }); }
+});
+
 adminRouter.get("/products", async (req, res) => {
-  const result = await pool.query("SELECT id, name, price, description, image_url FROM products ORDER BY id");
-  res.json(result.rows);
+  await ensureProductContent();
+  const result = await pool.query(`SELECT p.id,p.name,p.price,p.description,p.image_url,
+    json_build_object('subtitle',c.subtitle,'size',c.size,'gallery',c.gallery,'eyebrow',c.eyebrow,'intro',c.intro,'notes',c.notes) AS product_content
+    FROM products p LEFT JOIN product_content c ON c.product_id=p.id ORDER BY p.id`);
+  res.json(result.rows.map(product => ({ ...product, ...(product.product_content?.subtitle === null ? {} : product.product_content) })));
 });
 
 adminRouter.get("/settings", async (req, res) => {
@@ -351,7 +467,8 @@ adminRouter.post("/products", async (req, res) => {
   try {
     const product = validateProduct(req.body);
     const result = await pool.query("INSERT INTO products (id, name, price, description, image_url) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, price, description, image_url", [product.id, product.name, product.price, product.description, product.image_url]);
-    res.status(201).json(result.rows[0]);
+    await saveProductContent(product);
+    res.status(201).json({ ...result.rows[0], ...presentProduct({ ...result.rows[0], product_content: product }) });
   } catch (error) {
     res.status(error.code === "23505" ? 409 : 400).json({ error: error.code === "23505" ? "That product ID already exists." : error.message });
   }
@@ -362,7 +479,8 @@ adminRouter.put("/products/:productId", async (req, res) => {
     const product = validateProduct({ ...req.body, id: req.params.productId });
     const result = await pool.query("UPDATE products SET name = $2, price = $3, description = $4, image_url = $5 WHERE id = $1 RETURNING id, name, price, description, image_url", [product.id, product.name, product.price, product.description, product.image_url]);
     if (!result.rowCount) return res.status(404).json({ error: "Product not found." });
-    res.json(result.rows[0]);
+    await saveProductContent(product);
+    res.json({ ...result.rows[0], ...presentProduct({ ...result.rows[0], product_content: product }) });
   } catch (error) { res.status(400).json({ error: error.message }); }
 });
 

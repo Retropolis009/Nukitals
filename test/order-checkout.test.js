@@ -133,6 +133,48 @@ function orderPayload(overrides = {}) {
   };
 }
 
+test("site content and product descriptions are public, authenticated for editing, validated, and persistent", async () => {
+  const publicResponse = await fetch(`http://127.0.0.1:${port}/api/site-content`);
+  assert.equal(publicResponse.status, 200);
+  const seeded = await publicResponse.json();
+  assert.equal(seeded.hero_heading, "Where science\nmeets nature");
+
+  const unauthenticated = await fetch(`http://127.0.0.1:${port}/api/admin/site-content`);
+  assert.equal(unauthenticated.status, 401);
+  const adminUser = process.env.ADMIN_USER;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  assert.ok(adminUser && adminPassword, "Admin credentials must be configured to test admin routes.");
+  const authorization = `Basic ${Buffer.from(`${adminUser}:${adminPassword}`).toString("base64")}`;
+  const adminHeaders = { Authorization: authorization, "Content-Type": "application/json" };
+  const update = await fetch(`http://127.0.0.1:${port}/api/admin/site-content`, {
+    method: "PUT", headers: adminHeaders, body: JSON.stringify({ hero_description: "Saved in isolated test schema" })
+  });
+  assert.equal(update.status, 200);
+  const reloaded = await (await fetch(`http://127.0.0.1:${port}/api/site-content`)).json();
+  assert.equal(reloaded.hero_description, "Saved in isolated test schema");
+
+  for (const invalid of [
+    { unknown_key: "x" }, { announcement: 42 }, { whatsapp_url: "javascript:alert(1)" }, { hero_description: "x".repeat(1201) }
+  ]) {
+    const response = await fetch(`http://127.0.0.1:${port}/api/admin/site-content`, { method: "PUT", headers: adminHeaders, body: JSON.stringify(invalid) });
+    assert.equal(response.status, 400);
+  }
+  const injection = await fetch(`http://127.0.0.1:${port}/api/admin/site-content`, {
+    method: "PUT", headers: adminHeaders, body: JSON.stringify({ "announcement'); DROP TABLE products; --": "x" })
+  });
+  assert.equal(injection.status, 400);
+
+  const productSave = await fetch(`http://127.0.0.1:${port}/api/admin/products/test-product`, {
+    method: "PUT", headers: adminHeaders, body: JSON.stringify({ id: "test-product", name: "Local test product", price: 1000, image_url: "/images/test.jpg", description: "Core description", subtitle: "Editable subtitle", size: "50 ml", gallery: ["/images/test.jpg", "https://example.com/test.jpg"], eyebrow: "TEST", intro: "Editable intro", notes: ["Editable note"] })
+  });
+  assert.equal(productSave.status, 200);
+  const products = await (await fetch(`http://127.0.0.1:${port}/api/products`)).json();
+  const product = products.find(item => item.id === "test-product");
+  assert.equal(product.subtitle, "Editable subtitle");
+  assert.deepEqual(product.gallery, ["/images/test.jpg", "https://example.com/test.jpg"]);
+  assert.deepEqual(product.notes, ["Editable note"]);
+});
+
 async function submitOrder(cookie, key, payload) {
   return fetch(`http://127.0.0.1:${port}/api/orders`, {
     method: "POST",

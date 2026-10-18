@@ -7,8 +7,29 @@ let cartSync = Promise.resolve();
 let activeProduct = null;
 let detailQuantity = 1;
 let deliveryFee = 350;
-const freeShippingThreshold = 5000;
+let freeShippingThreshold = 5000;
+let publicContent = {};
 const pendingOrderKeyStorage = "nutikals-pending-order-key";
+
+// Public marketing copy is optional; existing HTML remains the fallback.
+function applyPublicContent() {
+  document.querySelectorAll("[data-content]").forEach(element => {
+    let value = publicContent[element.dataset.content];
+    if (typeof value === "string") {
+      if (value === "Free shipping on orders over Rs. 5,000") value = "Free shipping on orders over {threshold}";
+      element.textContent = value.replaceAll("{threshold}", money(freeShippingThreshold));
+    }
+  });
+  document.querySelectorAll("[data-content-href]").forEach(element => {
+    const value = publicContent[element.dataset.contentHref];
+    if (typeof value === "string" && /^(https?:|mailto:|tel:|\/|#|\.\/|\.\.\/)/i.test(value)) element.href = value;
+  });
+}
+fetch("./api/site-content", { cache: "no-store" }).then(response => response.ok ? response.json() : null).then(content => {
+  if (!content) return;
+  publicContent = content;
+  applyPublicContent();
+}).catch(() => {});
 
 function newCheckoutAttemptKey() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -32,7 +53,7 @@ function saveCart() {
   if (!cartReady) return;
   const items = cart.map(item => ({ id: item.id, quantity: item.quantity }));
   cartSync = cartSync.catch(() => {}).then(async () => {
-    const response = await fetch("/api/cart", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
+    const response = await fetch("./api/cart", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Your bag could not be saved.");
   });
@@ -40,7 +61,7 @@ function saveCart() {
 }
 async function loadCart() {
   try {
-    const response = await fetch("/api/cart");
+    const response = await fetch("./api/cart");
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Cart unavailable");
     cart = (result.items || []).filter(item => getProduct(item.id)).map(item => ({ id: item.id, quantity: Math.max(1, Math.min(10, Number(item.quantity) || 1)) }));
@@ -90,16 +111,19 @@ function renderCart() {
   document.querySelectorAll("[data-cart-items]").forEach(container => {
     container.innerHTML = cart.length ? cart.map(line => {
       const p = getProduct(line.id); if (!p) return "";
-      return `<article class="cart-line"><img src="${safe(p.image)}" alt=""><div class="cart-line-copy"><a href="/product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a><span>${money(p.price)} each</span><div class="cart-line-actions"><div class="cart-quantity"><button data-cart-change="-1" data-id="${safe(p.id)}" aria-label="Remove one ${safe(p.name)}">−</button><span>${line.quantity}</span><button data-cart-change="1" data-id="${safe(p.id)}" aria-label="Add one ${safe(p.name)}">+</button></div><button class="remove-line" data-cart-remove="${safe(p.id)}">Remove</button></div></div><strong>${money(p.price * line.quantity)}</strong></article>`;
-    }).join("") : `<div class="empty-bag"><span>✳</span><p>Your bag is taking a little breather.</p><a href="/#shop" class="text-link">Explore the collection →</a></div>`;
+      return `<article class="cart-line"><img src="${safe(p.image)}" alt=""><div class="cart-line-copy"><a href="./product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a><span>${money(p.price)} each</span><div class="cart-line-actions"><div class="cart-quantity"><button data-cart-change="-1" data-id="${safe(p.id)}" aria-label="Remove one ${safe(p.name)}">−</button><span>${line.quantity}</span><button data-cart-change="1" data-id="${safe(p.id)}" aria-label="Add one ${safe(p.name)}">+</button></div><button class="remove-line" data-cart-remove="${safe(p.id)}">Remove</button></div></div><strong>${money(p.price * line.quantity)}</strong></article>`;
+    }).join("") : `<div class="empty-bag"><span>✳</span><p>Your bag is taking a little breather.</p><a href="./#shop" class="text-link">Explore the collection →</a></div>`;
   });
   const subtotal = cartSubtotal();
   const shipping = !cart.length ? 0 : subtotal >= freeShippingThreshold ? 0 : deliveryFee;
   document.querySelectorAll("[data-delivery-fee]").forEach(el => el.textContent = money(deliveryFee));
+  document.querySelectorAll("[data-free-shipping-threshold]").forEach(el => el.textContent = money(freeShippingThreshold));
   document.querySelectorAll("[data-cart-total]").forEach(el => el.textContent = money(subtotal));
   document.querySelectorAll("[data-cart-shipping]").forEach(el => el.textContent = !cart.length ? "—" : shipping === 0 ? "Free" : money(shipping));
   document.querySelectorAll("[data-cart-grand-total]").forEach(el => el.textContent = money(subtotal + shipping));
-  document.querySelectorAll("[data-cart-shipping-message]").forEach(el => el.textContent = subtotal >= freeShippingThreshold ? "You have unlocked free shipping." : `Spend ${money(freeShippingThreshold - subtotal)} more to unlock free shipping.`);
+  document.querySelectorAll("[data-cart-shipping-message]").forEach(el => el.textContent = subtotal >= freeShippingThreshold
+    ? (publicContent.shipping_unlocked || "You have unlocked free shipping.")
+    : (publicContent.shipping_progress || "Spend {amount} more to unlock free shipping.").replaceAll("{amount}", money(freeShippingThreshold - subtotal)).replaceAll("{threshold}", money(freeShippingThreshold)));
   document.querySelectorAll("[data-cart-shipping-progress]").forEach(el => el.style.width = `${Math.min(100, subtotal / freeShippingThreshold * 100)}%`);
   document.querySelectorAll("[data-cart-change]").forEach(button => button.onclick = () => changeCart(button.dataset.id, Number(button.dataset.cartChange)));
   document.querySelectorAll("[data-cart-remove]").forEach(button => button.onclick = () => { cart = cart.filter(item => item.id !== button.dataset.cartRemove); saveCart(); });
@@ -114,7 +138,7 @@ function renderHome() {
   const grid = document.querySelector("[data-product-grid]"); if (!grid) return;
   const homeOrder = ["s9", "bareesh", "s11"];
   const homeProducts = [...homeOrder.map(getProduct).filter(Boolean), ...products.filter(product => !homeOrder.includes(product.id))];
-  grid.innerHTML = homeProducts.map((p, index) => `<article class="product-card"><a class="card-image image-${safe(p.id)}" href="/product.html?id=${encodeURIComponent(p.id)}"><img src="${safe(p.image)}" alt="${safe(p.name)}" loading="lazy"><span class="card-number">0${index + 1}</span><span class="card-arrow">↗</span></a><div class="card-copy"><div class="card-meta"><span>${safe(p.eyebrow)}</span><span>${safe(p.size)}</span></div><h3><a href="/product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a></h3><p>${safe(p.subtitle)}</p><div class="card-bottom"><div>${p.compareAt ? `<s>${money(p.compareAt)}</s>` : ""}<strong>${money(p.price)}</strong></div><button class="quick-add" data-quick-add="${safe(p.id)}" aria-label="Add ${safe(p.name)} to bag">Add to cart</button></div></div></article>`).join("");
+  grid.innerHTML = homeProducts.map((p, index) => `<article class="product-card"><a class="card-image image-${safe(p.id)}" href="./product.html?id=${encodeURIComponent(p.id)}"><img src="${safe(p.image)}" alt="${safe(p.name)}" loading="lazy"><span class="card-number">0${index + 1}</span><span class="card-arrow">↗</span></a><div class="card-copy"><div class="card-meta"><span>${safe(p.eyebrow)}</span><span>${safe(p.size)}</span></div><h3><a href="./product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a></h3><p>${safe(p.subtitle)}</p><div class="card-bottom"><div>${p.compareAt ? `<s>${money(p.compareAt)}</s>` : ""}<strong>${money(p.price)}</strong></div><button class="quick-add" data-quick-add="${safe(p.id)}" aria-label="Add ${safe(p.name)} to bag">Add to cart</button></div></div></article>`).join("");
   grid.querySelectorAll("[data-quick-add]").forEach(button => button.onclick = () => addToCart(button.dataset.quickAdd));
 }
 let carouselIndex = 1;
@@ -122,7 +146,7 @@ let carouselTimer;
 function renderCarousel() {
   const image = document.querySelector("[data-carousel-image]"); if (!image) return;
   const product = products[carouselIndex];
-  document.querySelector("[data-carousel-link]").href = `/product.html?id=${encodeURIComponent(product.id)}`;
+  document.querySelector("[data-carousel-link]").href = `./product.html?id=${encodeURIComponent(product.id)}`;
   image.src = product.image; image.alt = product.name;
   document.querySelector("[data-carousel-title]").textContent = product.name;
   document.querySelector("[data-carousel-price]").textContent = money(product.price);
@@ -195,7 +219,7 @@ function renderCheckoutSummary() {
   const button = document.querySelector("[data-place-order]");
   if (button) button.disabled = empty;
   let emptyNote = document.querySelector("[data-empty-cart-note]");
-  if (empty && !emptyNote) { emptyNote = document.createElement("p"); emptyNote.dataset.emptyCartNote = ""; emptyNote.className = "empty-cart-note"; emptyNote.innerHTML = `Your bag is empty. <a href="/#shop">Browse the collection →</a>`; form?.prepend(emptyNote); }
+  if (empty && !emptyNote) { emptyNote = document.createElement("p"); emptyNote.dataset.emptyCartNote = ""; emptyNote.className = "empty-cart-note"; emptyNote.innerHTML = `Your bag is empty. <a href="./#shop">Browse the collection →</a>`; form?.prepend(emptyNote); }
   if (!empty) emptyNote?.remove();
 }
 function renderPaymentInstructions(total) {
@@ -206,11 +230,14 @@ function renderPaymentInstructions(total) {
   document.querySelector("[data-jazzcash-amount]").textContent = money(total);
 }
 async function refreshStoreSettings() {
-  const response = await fetch("/api/store-settings", { cache: "no-store" });
+  const response = await fetch("./api/store-settings", { cache: "no-store" });
   if (!response.ok) throw new Error("Store settings unavailable");
   const settings = await response.json();
   deliveryFee = Number(settings.deliveryFee);
-  if (!Number.isFinite(deliveryFee)) throw new Error("Invalid delivery fee");
+  freeShippingThreshold = Number(settings.freeShippingThreshold);
+  if (!Number.isFinite(deliveryFee) || !Number.isFinite(freeShippingThreshold)) throw new Error("Invalid store settings");
+  applyPublicContent();
+  renderCart();
 }
 function setupCheckout() {
   const form = document.querySelector("[data-checkout-form]"); if (!form) return;
@@ -226,7 +253,7 @@ function setupCheckout() {
     try {
       idempotencyKey = getCheckoutAttemptKey();
       await cartSync;
-      const response = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(payload) });
+      const response = await fetch("./api/orders", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "We couldn't place that order. Please try again.");
       const name = fields.get("name").trim().split(/\s+/)[0];
@@ -250,7 +277,7 @@ window.addEventListener("focus", async () => {
   catch { /* The last known fee remains visible; the server validates every order total. */ }
 });
 
-fetch("/api/products").then(response => { if (!response.ok) throw new Error("Collection unavailable"); return response.json(); }).then(async data => {
+fetch("./api/products").then(response => { if (!response.ok) throw new Error("Collection unavailable"); return response.json(); }).then(async data => {
   products = data;
   try { await refreshStoreSettings(); } catch { /* Keep the default fee while the store settings endpoint is unavailable. */ }
   renderHome(); renderProduct(); setupCheckout(); setupCarousel(); return loadCart();

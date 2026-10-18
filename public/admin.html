@@ -9,7 +9,7 @@
   </style>
 </head>
 <body>
-  <header><strong>Nutikals · Store admin</strong><a href="/">View storefront</a></header>
+  <header><strong>Nutikals · Store admin</strong><a href="./">View storefront</a></header>
   <main>
     <section id="login" class="panel login">
       <h1>Admin sign in</h1>
@@ -21,8 +21,8 @@
       </form><p id="login-message" class="message" role="status"></p>
     </section>
     <section id="dashboard" class="hidden">
-      <div class="topline"><div><h1>Store admin</h1><p class="muted">Manage your catalog and customer orders.</p></div><button id="sign-out" class="secondary">Sign out</button></div>
-      <nav class="tabs" aria-label="Admin sections"><button class="active" data-tab="products">Products</button><button data-tab="orders">Orders <span id="new-order-count"></span></button></nav>
+      <div class="topline"><div><h1>Store admin</h1><p class="muted">Manage your catalog and customer orders.</p></div><div class="actions"><button id="open-content" type="button">Edit website content</button><button id="sign-out" class="secondary">Sign out</button></div></div>
+      <nav class="tabs" aria-label="Admin sections"><button class="active" data-tab="products">Products</button><button data-tab="content">Website Content</button><button data-tab="orders">Orders <span id="new-order-count"></span></button></nav>
       <section id="products-view">
       <section class="panel">
         <h2>Delivery fee</h2>
@@ -40,13 +40,22 @@
             <div class="field"><label for="product-id">ID</label><input id="product-id" name="id" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="e.g. s9" required></div>
             <div class="field"><label for="product-name">Name</label><input id="product-name" name="name" maxlength="160" required></div>
             <div class="field"><label for="product-price">Price (Rs.)</label><input id="product-price" name="price" type="number" min="0.01" step="0.01" required></div>
-            <div class="field"><label for="product-image">Image URL or path</label><input id="product-image" name="image_url" maxlength="1000" placeholder="/images/product.jpg" required></div>
+            <div class="field"><label for="product-image">Image URL or path</label><input id="product-image" name="image_url" maxlength="1000" placeholder="./images/product.jpg" required></div>
+            <div class="field"><label for="product-subtitle">Subtitle</label><input id="product-subtitle" name="subtitle" maxlength="500"></div>
+            <div class="field"><label for="product-size">Size</label><input id="product-size" name="size" maxlength="100"></div>
+            <div class="field"><label for="product-eyebrow">Eyebrow / category</label><input id="product-eyebrow" name="eyebrow" maxlength="200"></div>
+            <div class="field"><label for="product-intro">Product page introduction</label><input id="product-intro" name="intro" maxlength="2000"></div>
+            <div class="field full"><label for="product-gallery">Gallery image paths or URLs (one per line)</label><textarea id="product-gallery" name="gallery" maxlength="12000" placeholder="/images/product.jpg"></textarea></div>
+            <div class="field full"><label for="product-notes">Product notes (one per line)</label><textarea id="product-notes" name="notes" maxlength="4000"></textarea></div>
             <div class="field full"><label for="product-description">Description</label><textarea id="product-description" name="description" maxlength="5000" required></textarea></div>
           </div>
           <div class="actions"><button id="save-product">Save product</button><button id="cancel-edit" type="button" class="secondary hidden">Cancel edit</button><span id="form-message" class="help" role="status"></span></div>
         </form>
       </section>
       <section class="panel"><div class="topline"><h2>Current catalog</h2><button id="refresh" class="secondary">Refresh</button></div><div id="product-list" class="muted">Loading…</div><p id="list-message" class="message" role="status"></p></section>
+      </section>
+      <section id="content-view" class="hidden">
+        <section class="panel"><div class="topline"><div><h2>Website Content</h2><p class="muted">Edit storefront copy and links. Delivery prices, thresholds, and checkout behavior remain controlled by store settings.</p></div><div class="actions"><button id="reload-content" type="button" class="secondary">Reload saved content</button></div></div><div id="content-editor" class="grid"></div><div class="actions"><button id="save-content" type="button">Save website content</button><span id="content-message" class="help" role="status"></span></div></section>
       </section>
       <section id="orders-view" class="hidden">
         <section class="panel">
@@ -65,6 +74,14 @@
     const productList = document.querySelector("#product-list");
     const orderList = document.querySelector("#order-list");
     const deliveryFeeForm = document.querySelector("#delivery-fee-form");
+    const contentGroups = {
+      "Announcement and homepage": ["announcement", "product_announcement", "hero_heading", "hero_description", "hero_primary_text", "hero_primary_url", "hero_secondary_text", "hero_secondary_url", "featured_heading"],
+      "Brand story": ["story_heading", "hair_heading", "hair_text", "skin_heading", "skin_text", "beard_heading", "beard_text"],
+      "Shipping and ordering information": ["delivery_heading", "delivery_text", "shipping_progress", "shipping_unlocked", "payment_text", "confirmation_text", "checkout_payment_title", "checkout_jazzcash_instructions", "checkout_confirmation", "checkout_delivery_note"],
+      "Customer reviews": ["reviews_heading", "review_1", "reviewer_1", "review_2", "reviewer_2", "review_3", "reviewer_3"],
+      "Footer and links": ["footer_tagline", "product_footer_tagline", "privacy_link_text", "privacy_link_url", "shipping_link_text", "shipping_link_url", "terms_link_text", "terms_link_url", "help_shipping_text", "help_shipping_url", "contact_link_text", "whatsapp_display", "whatsapp_url", "facebook_text", "facebook_url", "instagram_text", "instagram_url", "jazzcash_number"]
+    };
+    let savedContent = {};
     let authHeader = "";
     let editingId = null;
     let products = [];
@@ -96,7 +113,7 @@
     }
     async function refreshProducts() {
       productList.textContent = "Loading…";
-      try { products = await api("/api/admin/products"); drawProducts(); message(document.querySelector("#list-message"), ""); }
+      try { products = await api("./api/admin/products"); drawProducts(); message(document.querySelector("#list-message"), ""); }
       catch (error) { message(document.querySelector("#list-message"), error.message, true); }
     }
     function makeSelect(values, selected, label) {
@@ -140,12 +157,41 @@
     async function refreshOrders() {
       orderList.innerHTML = '<p class="empty-state">Loading orders…</p>';
       const status = document.querySelector("#order-filter").value;
-      try { orders = await api(`/api/admin/orders${status ? `?status=${encodeURIComponent(status)}` : ""}`); drawOrders(); message(document.querySelector("#orders-message"), ""); }
+      try { orders = await api(`./api/admin/orders${status ? `?status=${encodeURIComponent(status)}` : ""}`); drawOrders(); message(document.querySelector("#orders-message"), ""); }
       catch (error) { message(document.querySelector("#orders-message"), error.message, true); }
+    }
+    function drawContent(content) {
+      const editor = document.querySelector("#content-editor"); editor.replaceChildren();
+      for (const [group, keys] of Object.entries(contentGroups)) {
+        const heading = document.createElement("h3"); heading.className = "field full"; heading.textContent = group; editor.append(heading);
+        for (const key of keys) {
+          const isLong = /_text$|description|review_[123]$|announcement|instructions|confirmation|shipping_progress|shipping_unlocked|delivery_note/.test(key);
+          const wrap = document.createElement("div"); wrap.className = "field" + (isLong ? " full" : "");
+          const label = document.createElement("label"); label.htmlFor = `content-${key}`; label.textContent = key.replaceAll("_", " ").replace(/\b\w/g, char => char.toUpperCase());
+          const input = document.createElement(isLong ? "textarea" : "input"); input.id = `content-${key}`; input.dataset.contentKey = key; input.maxLength = key.endsWith("_url") ? 1000 : 1200;
+          if (key === "shipping_progress") input.placeholder = "Use {amount} for the remaining amount";
+          if (key === "announcement") input.placeholder = "Use {threshold} to show the current free-shipping threshold";
+          if (key.endsWith("_url")) { input.type = "url"; input.placeholder = "https://? or #section"; input.type = "text"; }
+          input.value = content[key] || ""; wrap.append(label, input); editor.append(wrap);
+        }
+      }
+    }
+    async function refreshContent() {
+      const messageEl = document.querySelector("#content-message"); message(messageEl, "Loading saved content?");
+      try { savedContent = await api("./api/admin/site-content"); drawContent(savedContent); message(messageEl, "Saved content loaded."); }
+      catch (error) { message(messageEl, error.message, true); }
+    }
+    async function saveContent() {
+      const button = document.querySelector("#save-content"), messageEl = document.querySelector("#content-message"); button.disabled = true;
+      try {
+        const values = Object.fromEntries([...document.querySelectorAll("[data-content-key]")].map(input => [input.dataset.contentKey, input.value]));
+        savedContent = await api("./api/admin/site-content", { method: "PUT", body: JSON.stringify(values) }); drawContent(savedContent); message(messageEl, "Website content saved.");
+      } catch (error) { message(messageEl, error.message, true); }
+      finally { button.disabled = false; }
     }
     async function refreshDeliveryFee() {
       try {
-        const settings = await api("/api/admin/settings");
+        const settings = await api("./api/admin/settings");
         document.querySelector("#delivery-fee").value = Number(settings.deliveryFee).toFixed(2);
         document.querySelector("#free-shipping-threshold").value = `Rs. ${Number(settings.freeShippingThreshold).toLocaleString("en-PK")}`;
         message(document.querySelector("#delivery-fee-message"), "");
@@ -153,13 +199,13 @@
     }
     async function updateOrder(id, status, payment_status, button) {
       button.disabled = true;
-      try { await api(`/api/admin/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, payment_status }) }); await refreshOrders(); message(document.querySelector("#orders-message"), `Order ${id} updated.`); }
+      try { await api(`./api/admin/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, payment_status }) }); await refreshOrders(); message(document.querySelector("#orders-message"), `Order ${id} updated.`); }
       catch (error) { message(document.querySelector("#orders-message"), error.message, true); }
       finally { button.disabled = false; }
     }
     function startEdit(product) {
       editingId = product.id;
-      for (const field of productForm.elements) if (field.name) field.value = product[field.name] ?? "";
+      for (const field of productForm.elements) if (field.name) field.value = Array.isArray(product[field.name]) ? product[field.name].join("\n") : product[field.name] ?? "";
       document.querySelector("#product-id").disabled = true;
       document.querySelector("#form-title").textContent = `Edit ${product.name}`;
       document.querySelector("#save-product").textContent = "Save changes";
@@ -175,23 +221,25 @@
     }
     async function deleteProduct(id) {
       if (!confirm(`Delete ${id}? This removes it from the storefront.`)) return;
-      try { await api(`/api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" }); await refreshProducts(); }
+      try { await api(`./api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" }); await refreshProducts(); }
       catch (error) { message(document.querySelector("#list-message"), error.message, true); }
     }
     loginForm.addEventListener("submit", async event => {
       event.preventDefault();
       authHeader = basic(`${document.querySelector("#username").value}:${document.querySelector("#password").value}`);
       try {
-        await api("/api/admin/products");
+        await api("./api/admin/products");
         login.classList.add("hidden"); dashboard.classList.remove("hidden");
-        document.querySelector("#password").value = ""; await Promise.all([refreshProducts(), refreshOrders(), refreshDeliveryFee()]);
+        document.querySelector("#password").value = ""; await Promise.all([refreshProducts(), refreshOrders(), refreshDeliveryFee(), refreshContent()]);
       } catch (error) { authHeader = ""; message(loginMessage, error.message, true); }
     });
     productForm.addEventListener("submit", async event => {
       event.preventDefault(); const values = Object.fromEntries(new FormData(productForm));
+      values.gallery = values.gallery.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+      values.notes = values.notes.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
       const button = document.querySelector("#save-product"); button.disabled = true;
       try {
-        await api(editingId ? `/api/admin/products/${encodeURIComponent(editingId)}` : "/api/admin/products", { method: editingId ? "PUT" : "POST", body: JSON.stringify(values) });
+        await api(editingId ? `./api/admin/products/${encodeURIComponent(editingId)}` : "./api/admin/products", { method: editingId ? "PUT" : "POST", body: JSON.stringify(values) });
         resetForm(); await refreshProducts(); message(document.querySelector("#form-message"), "Product saved.");
       } catch (error) { message(document.querySelector("#form-message"), error.message, true); }
       finally { button.disabled = false; }
@@ -200,7 +248,7 @@
       event.preventDefault();
       const button = document.querySelector("#save-delivery-fee"); button.disabled = true;
       try {
-        const settings = await api("/api/admin/settings/delivery-fee", { method: "PUT", body: JSON.stringify({ deliveryFee: Number(document.querySelector("#delivery-fee").value) }) });
+        const settings = await api("./api/admin/settings/delivery-fee", { method: "PUT", body: JSON.stringify({ deliveryFee: Number(document.querySelector("#delivery-fee").value) }) });
         document.querySelector("#delivery-fee").value = Number(settings.deliveryFee).toFixed(2);
         message(document.querySelector("#delivery-fee-message"), "Delivery fee saved.");
       } catch (error) { message(document.querySelector("#delivery-fee-message"), error.message, true); }
@@ -212,11 +260,17 @@
     document.querySelector("#order-filter").onchange = refreshOrders;
     document.querySelectorAll("[data-tab]").forEach(tab => tab.onclick = () => {
       const ordersActive = tab.dataset.tab === "orders";
+      const contentActive = tab.dataset.tab === "content";
       document.querySelectorAll("[data-tab]").forEach(item => item.classList.toggle("active", item === tab));
-      document.querySelector("#products-view").classList.toggle("hidden", ordersActive);
+      document.querySelector("#products-view").classList.toggle("hidden", ordersActive || contentActive);
       document.querySelector("#orders-view").classList.toggle("hidden", !ordersActive);
+      document.querySelector("#content-view").classList.toggle("hidden", !contentActive);
+      if (contentActive) refreshContent();
       if (ordersActive) refreshOrders();
     });
+    document.querySelector("#save-content").onclick = saveContent;
+    document.querySelector("#reload-content").onclick = refreshContent;
+    document.querySelector("#open-content").onclick = () => document.querySelector('[data-tab="content"]').click();
     document.querySelector("#sign-out").onclick = () => { authHeader = ""; products = []; orders = []; dashboard.classList.add("hidden"); login.classList.remove("hidden"); loginForm.reset(); message(loginMessage, ""); };
   </script>
 </body>

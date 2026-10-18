@@ -1,5 +1,6 @@
-
-require("dotenv").config();
+﻿
+const path = require("node:path");
+require("dotenv").config({ path: path.join(__dirname, ".env") });
 
 const { Pool } = require("pg");
 
@@ -14,7 +15,10 @@ const pool = new Pool({
     database: process.env.DB_NAME,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    options: testSchema ? `-c search_path=${testSchema},public` : undefined
+    options: testSchema ? `-c search_path=${testSchema},public` : undefined,
+    ssl: process.env.DB_SSL === "true"
+        ? { rejectUnauthorized: false }
+        : undefined,
 });
 
 module.exports = pool;
