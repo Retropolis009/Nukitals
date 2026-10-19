@@ -92,6 +92,20 @@ before(async () => {
   await waitForServer();
 });
 
+test("storefront shopping stays on the landing page and has no product detail route", async () => {
+  const home = await fetch(`http://127.0.0.1:${port}/`);
+  assert.equal(home.status, 200);
+  const html = await home.text();
+  assert.match(html, /data-carousel-image/);
+  assert.doesNotMatch(html, /product\.html/);
+
+  const productPage = await fetch(`http://127.0.0.1:${port}/product.html`);
+  assert.equal(productPage.status, 404);
+
+  const appScript = await (await fetch(`http://127.0.0.1:${port}/app.js`)).text();
+  assert.doesNotMatch(appScript, /product\.html|renderProduct|data-product-detail/);
+});
+
 after(async () => {
   if (server && !serverExited) {
     server.kill();
@@ -176,7 +190,7 @@ test("site content and product descriptions are public, authenticated for editin
     });
     assert.equal(upload.status, 201);
     const uploaded = await upload.json();
-    uploadedPath = path.join(__dirname, "..", "public", uploaded.url.slice(1));
+    uploadedPath = path.join(__dirname, "..", uploaded.url.slice(1));
     const served = await fetch(`http://127.0.0.1:${port}${uploaded.url}`);
     assert.equal(served.status, 200);
     assert.equal(served.headers.get("content-type"), "image/png");
@@ -188,9 +202,20 @@ test("site content and product descriptions are public, authenticated for editin
   assert.equal(productSave.status, 200);
   const products = await (await fetch(`http://127.0.0.1:${port}/api/products`)).json();
   const product = products.find(item => item.id === "test-product");
+  assert.equal(product.image, "/images/test.jpg");
   assert.equal(product.subtitle, "Editable subtitle");
   assert.deepEqual(product.gallery, ["/images/test.jpg", "https://example.com/test.jpg"]);
   assert.deepEqual(product.notes, ["Editable note"]);
+
+  const basicUpdate = await fetch(`http://127.0.0.1:${port}/api/admin/products/test-product`, {
+    method: "PUT", headers: adminHeaders, body: JSON.stringify({ name: "Local test product", price: 1000, image_url: "/images/carousel.jpg", description: "Updated description" })
+  });
+  assert.equal(basicUpdate.status, 200);
+  const updatedProduct = (await (await fetch(`http://127.0.0.1:${port}/api/products`)).json()).find(item => item.id === "test-product");
+  assert.equal(updatedProduct.image, "/images/carousel.jpg");
+  assert.equal(updatedProduct.subtitle, "Editable subtitle");
+  assert.deepEqual(updatedProduct.gallery, ["/images/test.jpg", "https://example.com/test.jpg"]);
+  assert.deepEqual(updatedProduct.notes, ["Editable note"]);
 });
 
 async function submitOrder(cookie, key, payload) {

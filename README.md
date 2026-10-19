@@ -33,15 +33,15 @@ Sign in at `/admin` and use the **Website Content** tab for marketing text and l
 
 The Website Content editor covers the announcement and homepage hero buttons, featured and brand-story headings, hair/skin/beard descriptions, delivery timing and free-shipping messages, homepage payment and confirmation text, checkout payment/confirmation guidance, three review quotes and names, footer tagline, and WhatsApp/Facebook/Instagram destinations. Use `{threshold}` in the announcement to show the live free-shipping threshold, and `{amount}` in the cart progress message for the remaining amount. The threshold and delivery fee shown to customers are read from trusted store settings; content edits do not change order totals, payment instructions behavior, or checkout validation.
 
-Use the **Products** tab to edit the existing product record. In addition to its name, description, price, and main image, each product can have a subtitle, size, eyebrow/category, product-page introduction, gallery images, and notes. Enter one gallery image path or URL per line and one product note per line. Existing local paths such as `/images/product.jpg` work, and product IDs remain unchanged. The main-image and gallery controls accept administrator uploads in JPEG, PNG, and WebP formats, up to 5 MB each. The server checks the image signature/structure, generates a unique filename, and saves it under `public/uploads`; it never accepts a client-supplied path or overwrites a file. The host must retain that directory across deploys and allow the Node process to write to it. Uploaded files are public assets once stored; deleting products does not automatically delete images.
+Use the **Products** tab to manage the landing-page catalog: product ID, name, price, description, and main image. The same main image is used by the product listing and featured carousel. Enter a local path such as `/images/product.jpg` or an HTTP(S) URL, or upload a JPEG, PNG, or WebP image up to 5 MB. The server checks the image content, generates a unique filename, and saves it under `uploads`; it never accepts a client-supplied path or overwrites a file. The host must retain that directory across deploys and allow the Node process to write to it. Uploaded files are public assets once stored; deleting products does not automatically delete images.
 
-The Website Content editor has a live preview beside the fields. Choose Homepage or Product page in the preview selector; unsaved copy and existing-product edits update there while you type. The product form also shows image thumbnails, and the uploaded image is not published to product records until you save that product.
+The Website Content editor has a live homepage preview beside the fields. Unsaved copy updates there while you type. The product form shows an image thumbnail, and an uploaded image is not published to the catalog until you save the product.
 
 The public content endpoint is `GET /api/site-content`. Admin content endpoints are `GET /api/admin/site-content` and `PUT /api/admin/site-content`; they require the existing admin Basic authentication. Product presentation is returned with the existing `/api/products` response and saved through existing product admin routes.
 
 ## Store behavior
 
-- Product names, prices, descriptions, and image paths are loaded from PostgreSQL. Extra product presentation details for the original products remain in `products.js`.
+- Product names, prices, descriptions, and image paths are loaded from PostgreSQL. The storefront uses the landing page for product listings and cart additions; it has no separate product-detail page.
 - The server stores guest carts in PostgreSQL; the browser keeps a local cache to restore the bag if the cart API is temporarily unavailable.
 - Checkout supports cash on delivery and manual JazzCash instructions. It does not process card details or verify JazzCash transfers.
 - Orders and order items are stored in PostgreSQL.
@@ -49,8 +49,6 @@ The public content endpoint is `GET /api/site-content`. Admin content endpoints 
 - Delivery costs Rs. 350 by default below Rs. 5,000 and is free at Rs. 5,000 and above. Admins can change the delivery fee in the dashboard.
 - JazzCash checkout records a manual payment request to 0330 8348288. It does not initiate or confirm a transfer.
 - Use HTTPS and set privacy and retention policies before launch.
-
-The product gallery uses the supplied local image first and includes the remaining image links from the CSV as optional gallery items. A missing remote image is hidden automatically.
 
 ## Tests
 

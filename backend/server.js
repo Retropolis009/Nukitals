@@ -7,8 +7,8 @@ const productDetails = require("./products");
 const nodemailer = require("nodemailer");
 const siteContent = require("./site-content");
 
-const PUBLIC = path.join(__dirname, "public");
-const PORT = Number(process.env.PORT || 3000);
+const FRONTEND_ROOT = path.join(__dirname, "..", "frontend");
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(FRONTEND_ROOT, "uploads");
 const CART_COOKIE = "nutikals_cart";
 const CART_SECRET = process.env.CART_COOKIE_SECRET || process.env.DB_PASSWORD || "";
 const FREE_SHIPPING_THRESHOLD = 5000;
@@ -157,17 +157,20 @@ function presentProduct(row) {
   };
 }
 
-async function saveProductContent(product) {
+async function saveProductContent(product, preserveExisting = false) {
   const legacy = productDetails.find(item => item.id === product.id) || {};
-  const value = {
-    subtitle: product.subtitle ?? legacy.subtitle ?? "",
-    size: product.size ?? legacy.size ?? "",
-    gallery: product.gallery ?? legacy.gallery ?? [product.image_url],
-    eyebrow: product.eyebrow ?? legacy.eyebrow ?? "",
-    intro: product.intro ?? legacy.intro ?? product.description,
-    notes: product.notes ?? legacy.notes ?? []
-  };
   await ensureProductContent();
+  const saved = preserveExisting
+    ? (await pool.query("SELECT subtitle, size, gallery, eyebrow, intro, notes FROM product_content WHERE product_id = $1", [product.id])).rows[0] || {}
+    : {};
+  const value = {
+    subtitle: product.subtitle ?? saved.subtitle ?? legacy.subtitle ?? "",
+    size: product.size ?? saved.size ?? legacy.size ?? "",
+    gallery: product.gallery ?? saved.gallery ?? legacy.gallery ?? [product.image_url],
+    eyebrow: product.eyebrow ?? saved.eyebrow ?? legacy.eyebrow ?? "",
+    intro: product.intro ?? saved.intro ?? legacy.intro ?? product.description,
+    notes: product.notes ?? saved.notes ?? legacy.notes ?? []
+  };
   await pool.query(`INSERT INTO product_content (product_id,subtitle,size,gallery,eyebrow,intro,notes,updated_at)
     VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7::jsonb,now()) ON CONFLICT (product_id) DO UPDATE SET
     subtitle=EXCLUDED.subtitle,size=EXCLUDED.size,gallery=EXCLUDED.gallery,eyebrow=EXCLUDED.eyebrow,
@@ -368,16 +371,18 @@ async function createOrder(body = {}, cartId, idempotencyKey) {
 }
 
 const app = express();
+const api = express.Router();
+const BASE_PATH = process.env.API_BASE_PATH || "/demo/api";
 app.disable("x-powered-by");
 app.use((req, res, next) => {
   res.set("X-Content-Type-Options", "nosniff");
   res.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  if (req.path.startsWith("/api/")) res.set("Cache-Control", "no-store");
+  if (req.originalUrl.startsWith(BASE_PATH)) res.set("Cache-Control", "no-store");
   next();
 });
 app.use(express.json({ limit: "20kb" }));
 
-app.get("/api/products", async (req, res) => {
+api.get("/products", async (req, res) => {
   await ensureProductContent();
   const result = await pool.query(`SELECT p.id,p.name,p.price,p.description,p.image_url,
     json_build_object('subtitle',c.subtitle,'size',c.size,'gallery',c.gallery,'eyebrow',c.eyebrow,'intro',c.intro,'notes',c.notes) AS product_content
@@ -385,32 +390,28 @@ app.get("/api/products", async (req, res) => {
   res.json(result.rows.map(presentProduct));
 });
 
-app.get("/api/site-content", async (req, res) => {
+api.get("/site-content", async (req, res) => {
   try { res.json(await readSiteContent()); }
   catch (error) { console.error("Could not load site content:", error); res.status(503).json({ error: "Website content is temporarily unavailable." }); }
 });
 
-app.get("/api/store-settings", async (req, res) => {
+api.get("/store-settings", async (req, res) => {
   try { res.json({ deliveryFee: await getDeliveryFee(), freeShippingThreshold: FREE_SHIPPING_THRESHOLD }); }
   catch (error) { console.error("Could not load store settings:", error); res.status(503).json({ error: "Delivery pricing is temporarily unavailable. Please try again shortly." }); }
 });
 
-app.get("/api/cart", async (req, res) => {
+api.get("/cart", async (req, res) => {
   const cartId = await getCartId(req, res);
   const result = await pool.query("SELECT product_id AS id, quantity FROM cart_items WHERE cart_id = $1 ORDER BY product_id", [cartId]);
   res.json({ items: result.rows });
 });
 
-app.put("/api/cart", async (req, res) => {
+api.put("/cart", async (req, res) => {
   try {
     const cartId = await getCartId(req, res);
     const items = await updateCart(cartId, req.body?.items);
     res.json({ ok: true, items });
   } catch (error) { res.status(400).json({ ok: false, error: error.message }); }
-});
-
-app.get(["/admin", "/admin.html"], (req, res) => {
-  res.set("Cache-Control", "no-store").sendFile(path.join(PUBLIC, "admin.html"));
 });
 
 const adminRouter = express.Router();
@@ -430,7 +431,7 @@ adminRouter.post("/uploads", express.raw({ type: ["image/jpeg", "image/png", "im
   const expectedExtension = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" }[req.get("Content-Type")];
   if (expectedExtension !== extension) return res.status(415).json({ error: "The image content does not match its declared file type." });
   const filename = `${crypto.randomUUID()}${extension}`;
-  const uploadDirectory = path.join(PUBLIC, "uploads");
+  const uploadDirectory = UPLOAD_DIR;
   try {
     await fs.mkdir(uploadDirectory, { recursive: true });
     await fs.writeFile(path.join(uploadDirectory, filename), bytes, { flag: "wx", mode: 0o644 });
@@ -505,7 +506,7 @@ adminRouter.put("/products/:productId", async (req, res) => {
     const product = validateProduct({ ...req.body, id: req.params.productId });
     const result = await pool.query("UPDATE products SET name = $2, price = $3, description = $4, image_url = $5 WHERE id = $1 RETURNING id, name, price, description, image_url", [product.id, product.name, product.price, product.description, product.image_url]);
     if (!result.rowCount) return res.status(404).json({ error: "Product not found." });
-    await saveProductContent(product);
+    await saveProductContent(product, true);
     res.json({ ...result.rows[0], ...presentProduct({ ...result.rows[0], product_content: product }) });
   } catch (error) { res.status(400).json({ error: error.message }); }
 });
@@ -544,9 +545,9 @@ adminRouter.patch("/orders/:orderId", async (req, res) => {
   } catch (error) { res.status(400).json({ error: error.message }); }
 });
 
-app.use("/api/admin", adminRouter);
+api.use("/admin", adminRouter);
 
-app.post("/api/orders", async (req, res) => {
+api.post("/orders", async (req, res) => {
   try {
     const cartId = await getCartId(req, res);
     const order = await createOrder(req.body, cartId, req.get("Idempotency-Key"));
@@ -564,17 +565,17 @@ app.post("/api/orders", async (req, res) => {
   }
 });
 
-app.use("/api", (req, res) => {
+api.get("/ping", (req, res) => res.json({ ok: true }));
+
+api.use((req, res) => {
   res.status(req.method === "GET" || req.method === "HEAD" ? 404 : 405).json({ error: req.method === "GET" || req.method === "HEAD" ? "Not found" : "Method not allowed" });
 });
-
-app.use(express.static(PUBLIC));
-app.use((req, res) => res.status(404).json({ error: "Not found" }));
-app.use((error, req, res, next) => {
+api.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   const status = error.status === 400 || error.status === 413 ? error.status : 500;
   if (status === 500) console.error(error);
   res.status(status).json({ error: status === 413 ? "Request body is too large." : status === 400 ? "Invalid JSON request body." : "Something went wrong." });
 });
+app.use(BASE_PATH, api);
 
-app.listen(PORT, () => console.log(`Nutikals is running at http://localhost:${PORT}`));
+app.listen(process.env.PORT || 3000, () => console.log("Nutikals API is running."));

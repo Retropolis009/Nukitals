@@ -40,13 +40,7 @@
             <div class="field"><label for="product-id">ID</label><input id="product-id" name="id" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="e.g. s9" required></div>
             <div class="field"><label for="product-name">Name</label><input id="product-name" name="name" maxlength="160" required></div>
             <div class="field"><label for="product-price">Price (Rs.)</label><input id="product-price" name="price" type="number" min="0.01" step="0.01" required></div>
-            <div class="field"><label for="product-image">Main image path or URL</label><input id="product-image" name="image_url" maxlength="1000" placeholder="/images/product.jpg" required><div class="image-actions"><input id="product-image-file" type="file" accept="image/jpeg,image/png,image/webp"><span class="help">JPEG, PNG, WebP · up to 5 MB</span></div><div id="main-image-preview" class="image-preview" aria-live="polite"></div></div>
-            <div class="field"><label for="product-subtitle">Subtitle</label><input id="product-subtitle" name="subtitle" maxlength="500"></div>
-            <div class="field"><label for="product-size">Size</label><input id="product-size" name="size" maxlength="100"></div>
-            <div class="field"><label for="product-eyebrow">Eyebrow / category</label><input id="product-eyebrow" name="eyebrow" maxlength="200"></div>
-            <div class="field"><label for="product-intro">Product page introduction</label><input id="product-intro" name="intro" maxlength="2000"></div>
-            <div class="field full"><label for="product-gallery">Gallery image paths or URLs (one per line)</label><textarea id="product-gallery" name="gallery" maxlength="12000" placeholder="/images/product.jpg"></textarea><div class="image-actions"><input id="gallery-image-files" type="file" accept="image/jpeg,image/png,image/webp" multiple><span class="help">Choose multiple images to upload them to the gallery.</span></div><div id="gallery-image-preview" class="image-preview" aria-live="polite"></div></div>
-            <div class="field full"><label for="product-notes">Product notes (one per line)</label><textarea id="product-notes" name="notes" maxlength="4000"></textarea></div>
+            <div class="field"><label for="product-image">Main image path or URL</label><input id="product-image" name="image_url" maxlength="1000" placeholder="/demo/images/product.jpg" required><div class="help">This image is used in the product listing and featured carousel.</div><div class="image-actions"><input id="product-image-file" type="file" accept="image/jpeg,image/png,image/webp"><span class="help">Or upload JPEG, PNG, WebP · up to 5 MB</span></div><div id="main-image-preview" class="image-preview" aria-live="polite"></div></div>
             <div class="field full"><label for="product-description">Description</label><textarea id="product-description" name="description" maxlength="5000" required></textarea></div>
           </div>
           <div class="actions"><button id="save-product">Save product</button><button id="cancel-edit" type="button" class="secondary hidden">Cancel edit</button><span id="form-message" class="help" role="status"></span></div>
@@ -55,7 +49,7 @@
       <section class="panel"><div class="topline"><h2>Current catalog</h2><button id="refresh" class="secondary">Refresh</button></div><div id="product-list" class="muted">Loading…</div><p id="list-message" class="message" role="status"></p></section>
       </section>
       <section id="content-view" class="hidden">
-        <section class="panel"><div class="topline"><div><h2>Website Content</h2><p class="muted">Edit storefront copy and links. Delivery prices, thresholds, and checkout behavior remain controlled by store settings.</p></div><div class="actions"><label for="preview-page">Preview page</label><select id="preview-page"><option value="./?preview=1">Homepage</option><option value="./product.html?id=s9&amp;preview=1">Product page</option></select><button id="reload-content" type="button" class="secondary">Reload saved content</button></div></div><div class="content-layout"><div id="content-editor" class="grid"></div><aside class="content-preview"><h3>Live storefront preview</h3><p class="help">Unsaved text and links appear here as you type.</p><iframe id="content-preview" title="Live storefront content preview" src="./?preview=1"></iframe></aside></div><div class="actions"><button id="save-content" type="button">Save website content</button><span id="content-message" class="help" role="status"></span></div></section>
+        <section class="panel"><div class="topline"><div><h2>Website Content</h2><p class="muted">Edit storefront copy and links. Delivery prices, thresholds, and checkout behavior remain controlled by store settings.</p></div><div class="actions"><button id="reload-content" type="button" class="secondary">Reload saved content</button></div></div><div class="content-layout"><div id="content-editor" class="grid"></div><aside class="content-preview"><h3>Live storefront preview</h3><p class="help">Unsaved text and links appear here as you type.</p><iframe id="content-preview" title="Live storefront content preview" src="./?preview=1"></iframe></aside></div><div class="actions"><button id="save-content" type="button">Save website content</button><span id="content-message" class="help" role="status"></span></div></section>
       </section>
       <section id="orders-view" class="hidden">
         <section class="panel">
@@ -65,6 +59,7 @@
       </section>
     </section>
   </main>
+  <script src="./config.js"></script>
   <script>
     const login = document.querySelector("#login");
     const dashboard = document.querySelector("#dashboard");
@@ -99,10 +94,7 @@
       const preview = document.querySelector("#content-preview");
       if (!preview?.contentWindow) return;
       const content = Object.fromEntries([...document.querySelectorAll("[data-content-key]")].map(input => [input.dataset.contentKey, input.value]));
-      const product = Object.fromEntries([...productForm.elements].filter(input => input.name).map(input => [input.name, input.value]));
-      product.gallery = product.gallery?.split(/\r?\n/).map(value => value.trim()).filter(Boolean) || [];
-      product.notes = product.notes?.split(/\r?\n/).map(value => value.trim()).filter(Boolean) || [];
-      preview.contentWindow.postMessage({ type: "nutikals-content-preview", content, product }, location.origin);
+      preview.contentWindow.postMessage({ type: "nutikals-content-preview", content }, location.origin);
     }
     function paintImagePreview(container, urls) {
       container.replaceChildren();
@@ -114,13 +106,10 @@
     }
     function refreshProductImagePreviews() {
       paintImagePreview(document.querySelector("#main-image-preview"), [document.querySelector("#product-image").value]);
-      const gallery = document.querySelector("#product-gallery").value.split(/\r?\n/).map(value => value.trim());
-      paintImagePreview(document.querySelector("#gallery-image-preview"), gallery);
-      broadcastContentPreview();
     }
     async function uploadImage(file) {
       if (!file || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) throw new Error("Choose a JPEG, PNG, or WebP image up to 5 MB.");
-      const response = await fetch("./api/admin/uploads", { method: "POST", headers: { Authorization: authHeader, "Content-Type": file.type }, body: file });
+      const response = await fetch(`${API_BASE}/admin/uploads`, { method: "POST", headers: { Authorization: authHeader, "Content-Type": file.type }, body: file });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Image upload failed.");
       return result.url;
@@ -143,7 +132,7 @@
     }
     async function refreshProducts() {
       productList.textContent = "Loading…";
-      try { products = await api("./api/admin/products"); drawProducts(); message(document.querySelector("#list-message"), ""); }
+      try { products = await api(`${API_BASE}/admin/products`); drawProducts(); message(document.querySelector("#list-message"), ""); }
       catch (error) { message(document.querySelector("#list-message"), error.message, true); }
     }
     function makeSelect(values, selected, label) {
@@ -187,7 +176,7 @@
     async function refreshOrders() {
       orderList.innerHTML = '<p class="empty-state">Loading orders…</p>';
       const status = document.querySelector("#order-filter").value;
-      try { orders = await api(`./api/admin/orders${status ? `?status=${encodeURIComponent(status)}` : ""}`); drawOrders(); message(document.querySelector("#orders-message"), ""); }
+      try { orders = await api(`${API_BASE}/admin/orders${status ? `?status=${encodeURIComponent(status)}` : ""}`); drawOrders(); message(document.querySelector("#orders-message"), ""); }
       catch (error) { message(document.querySelector("#orders-message"), error.message, true); }
     }
     function drawContent(content) {
@@ -209,20 +198,20 @@
     }
     async function refreshContent() {
       const messageEl = document.querySelector("#content-message"); message(messageEl, "Loading saved content?");
-      try { savedContent = await api("./api/admin/site-content"); drawContent(savedContent); message(messageEl, "Saved content loaded."); }
+      try { savedContent = await api(`${API_BASE}/admin/site-content`); drawContent(savedContent); message(messageEl, "Saved content loaded."); }
       catch (error) { message(messageEl, error.message, true); }
     }
     async function saveContent() {
       const button = document.querySelector("#save-content"), messageEl = document.querySelector("#content-message"); button.disabled = true;
       try {
         const values = Object.fromEntries([...document.querySelectorAll("[data-content-key]")].map(input => [input.dataset.contentKey, input.value]));
-        savedContent = await api("./api/admin/site-content", { method: "PUT", body: JSON.stringify(values) }); drawContent(savedContent); message(messageEl, "Website content saved.");
+        savedContent = await api(`${API_BASE}/admin/site-content`, { method: "PUT", body: JSON.stringify(values) }); drawContent(savedContent); message(messageEl, "Website content saved.");
       } catch (error) { message(messageEl, error.message, true); }
       finally { button.disabled = false; }
     }
     async function refreshDeliveryFee() {
       try {
-        const settings = await api("./api/admin/settings");
+        const settings = await api(`${API_BASE}/admin/settings`);
         document.querySelector("#delivery-fee").value = Number(settings.deliveryFee).toFixed(2);
         document.querySelector("#free-shipping-threshold").value = `Rs. ${Number(settings.freeShippingThreshold).toLocaleString("en-PK")}`;
         message(document.querySelector("#delivery-fee-message"), "");
@@ -230,7 +219,7 @@
     }
     async function updateOrder(id, status, payment_status, button) {
       button.disabled = true;
-      try { await api(`./api/admin/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, payment_status }) }); await refreshOrders(); message(document.querySelector("#orders-message"), `Order ${id} updated.`); }
+      try { await api(`${API_BASE}/admin/orders/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status, payment_status }) }); await refreshOrders(); message(document.querySelector("#orders-message"), `Order ${id} updated.`); }
       catch (error) { message(document.querySelector("#orders-message"), error.message, true); }
       finally { button.disabled = false; }
     }
@@ -242,6 +231,7 @@
       document.querySelector("#save-product").textContent = "Save changes";
       document.querySelector("#cancel-edit").classList.remove("hidden");
       message(document.querySelector("#form-message"), "");
+      refreshProductImagePreviews();
       productForm.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     function resetForm() {
@@ -249,28 +239,27 @@
       document.querySelector("#form-title").textContent = "Add a product";
       document.querySelector("#save-product").textContent = "Save product";
       document.querySelector("#cancel-edit").classList.add("hidden");
+      refreshProductImagePreviews();
     }
     async function deleteProduct(id) {
       if (!confirm(`Delete ${id}? This removes it from the storefront.`)) return;
-      try { await api(`./api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" }); await refreshProducts(); }
+      try { await api(`${API_BASE}/admin/products/${encodeURIComponent(id)}`, { method: "DELETE" }); await refreshProducts(); }
       catch (error) { message(document.querySelector("#list-message"), error.message, true); }
     }
     loginForm.addEventListener("submit", async event => {
       event.preventDefault();
       authHeader = basic(`${document.querySelector("#username").value}:${document.querySelector("#password").value}`);
       try {
-        await api("./api/admin/products");
+        await api(`${API_BASE}/admin/products`);
         login.classList.add("hidden"); dashboard.classList.remove("hidden");
         document.querySelector("#password").value = ""; await Promise.all([refreshProducts(), refreshOrders(), refreshDeliveryFee(), refreshContent()]);
       } catch (error) { authHeader = ""; message(loginMessage, error.message, true); }
     });
     productForm.addEventListener("submit", async event => {
       event.preventDefault(); const values = Object.fromEntries(new FormData(productForm));
-      values.gallery = values.gallery.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-      values.notes = values.notes.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
       const button = document.querySelector("#save-product"); button.disabled = true;
       try {
-        await api(editingId ? `./api/admin/products/${encodeURIComponent(editingId)}` : "./api/admin/products", { method: editingId ? "PUT" : "POST", body: JSON.stringify(values) });
+        await api(editingId ? `${API_BASE}/admin/products/${encodeURIComponent(editingId)}` : `${API_BASE}/admin/products`, { method: editingId ? "PUT" : "POST", body: JSON.stringify(values) });
         resetForm(); await refreshProducts(); message(document.querySelector("#form-message"), "Product saved.");
       } catch (error) { message(document.querySelector("#form-message"), error.message, true); }
       finally { button.disabled = false; }
@@ -279,7 +268,7 @@
       event.preventDefault();
       const button = document.querySelector("#save-delivery-fee"); button.disabled = true;
       try {
-        const settings = await api("./api/admin/settings/delivery-fee", { method: "PUT", body: JSON.stringify({ deliveryFee: Number(document.querySelector("#delivery-fee").value) }) });
+        const settings = await api(`${API_BASE}/admin/settings/delivery-fee`, { method: "PUT", body: JSON.stringify({ deliveryFee: Number(document.querySelector("#delivery-fee").value) }) });
         document.querySelector("#delivery-fee").value = Number(settings.deliveryFee).toFixed(2);
         message(document.querySelector("#delivery-fee-message"), "Delivery fee saved.");
       } catch (error) { message(document.querySelector("#delivery-fee-message"), error.message, true); }
@@ -302,26 +291,12 @@
     document.querySelector("#save-content").onclick = saveContent;
     document.querySelector("#reload-content").onclick = refreshContent;
     document.querySelector("#content-preview").addEventListener("load", broadcastContentPreview);
-    document.querySelector("#preview-page").addEventListener("change", event => { document.querySelector("#content-preview").src = event.target.value; });
     document.querySelector("#product-image").addEventListener("input", refreshProductImagePreviews);
-    document.querySelector("#product-gallery").addEventListener("input", refreshProductImagePreviews);
-    productForm.addEventListener("input", broadcastContentPreview);
     document.querySelector("#product-image-file").addEventListener("change", async event => {
       const file = event.target.files[0]; if (!file) return;
       const input = document.querySelector("#product-image"); input.disabled = true;
       try { input.value = await uploadImage(file); refreshProductImagePreviews(); message(document.querySelector("#form-message"), "Main image uploaded. Save the product to publish it."); }
       catch (error) { message(document.querySelector("#form-message"), error.message, true); }
-      finally { input.disabled = false; event.target.value = ""; }
-    });
-    document.querySelector("#gallery-image-files").addEventListener("change", async event => {
-      const files = [...event.target.files]; if (!files.length) return;
-      const input = document.querySelector("#product-gallery"); input.disabled = true;
-      try {
-        const uploaded = [];
-        for (const file of files) uploaded.push(await uploadImage(file));
-        input.value = [...input.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean), ...uploaded].join("\n");
-        refreshProductImagePreviews(); message(document.querySelector("#form-message"), `${uploaded.length} gallery image${uploaded.length === 1 ? "" : "s"} uploaded. Save the product to publish them.`);
-      } catch (error) { message(document.querySelector("#form-message"), error.message, true); }
       finally { input.disabled = false; event.target.value = ""; }
     });
     document.querySelector("#open-content").onclick = () => document.querySelector('[data-tab="content"]').click();

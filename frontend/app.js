@@ -4,12 +4,9 @@ let products = [];
 let cart = [];
 let cartReady = false;
 let cartSync = Promise.resolve();
-let activeProduct = null;
-let detailQuantity = 1;
 let deliveryFee = 350;
 let freeShippingThreshold = 5000;
 let publicContent = {};
-let previewProductDraft = null;
 const pendingOrderKeyStorage = "nutikals-pending-order-key";
 
 // Public marketing copy is optional; existing HTML remains the fallback.
@@ -26,7 +23,7 @@ function applyPublicContent() {
     if (typeof value === "string" && /^(https?:|mailto:|tel:|\/|#|\.\/|\.\.\/)/i.test(value)) element.href = value;
   });
 }
-fetch("./api/site-content", { cache: "no-store" }).then(response => response.ok ? response.json() : null).then(content => {
+fetch(`${API_BASE}/site-content`, { cache: "no-store" }).then(response => response.ok ? response.json() : null).then(content => {
   if (!content) return;
   publicContent = content;
   applyPublicContent();
@@ -36,14 +33,8 @@ window.addEventListener("message", event => {
   const content = event.data.content;
   if (!content || typeof content !== "object" || Array.isArray(content)) return;
   publicContent = { ...publicContent, ...content };
-  if (event.data.product && typeof event.data.product === "object" && !Array.isArray(event.data.product)) previewProductDraft = event.data.product;
   applyPublicContent();
-  if (previewProductDraft && previewProductDraft.id === new URLSearchParams(location.search).get("id")) renderProduct();
 });
-function productForDisplay(product) {
-  if (!previewProductDraft || previewProductDraft.id !== product.id) return product;
-  return { ...product, ...previewProductDraft, image: previewProductDraft.image_url || product.image, gallery: previewProductDraft.gallery?.length ? previewProductDraft.gallery : [previewProductDraft.image_url || product.image] };
-}
 
 function newCheckoutAttemptKey() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -67,7 +58,7 @@ function saveCart() {
   if (!cartReady) return;
   const items = cart.map(item => ({ id: item.id, quantity: item.quantity }));
   cartSync = cartSync.catch(() => {}).then(async () => {
-    const response = await fetch("./api/cart", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
+    const response = await fetch(`${API_BASE}/cart`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Your bag could not be saved.");
   });
@@ -75,7 +66,7 @@ function saveCart() {
 }
 async function loadCart() {
   try {
-    const response = await fetch("./api/cart");
+    const response = await fetch(`${API_BASE}/cart`);
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Cart unavailable");
     cart = (result.items || []).filter(item => getProduct(item.id)).map(item => ({ id: item.id, quantity: Math.max(1, Math.min(10, Number(item.quantity) || 1)) }));
@@ -125,7 +116,7 @@ function renderCart() {
   document.querySelectorAll("[data-cart-items]").forEach(container => {
     container.innerHTML = cart.length ? cart.map(line => {
       const p = getProduct(line.id); if (!p) return "";
-      return `<article class="cart-line"><img src="${safe(p.image)}" alt=""><div class="cart-line-copy"><a href="./product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a><span>${money(p.price)} each</span><div class="cart-line-actions"><div class="cart-quantity"><button data-cart-change="-1" data-id="${safe(p.id)}" aria-label="Remove one ${safe(p.name)}">−</button><span>${line.quantity}</span><button data-cart-change="1" data-id="${safe(p.id)}" aria-label="Add one ${safe(p.name)}">+</button></div><button class="remove-line" data-cart-remove="${safe(p.id)}">Remove</button></div></div><strong>${money(p.price * line.quantity)}</strong></article>`;
+      return `<article class="cart-line"><img src="${safe(p.image)}" alt=""><div class="cart-line-copy"><strong>${safe(p.name)}</strong><span>${money(p.price)} each</span><div class="cart-line-actions"><div class="cart-quantity"><button data-cart-change="-1" data-id="${safe(p.id)}" aria-label="Remove one ${safe(p.name)}">−</button><span>${line.quantity}</span><button data-cart-change="1" data-id="${safe(p.id)}" aria-label="Add one ${safe(p.name)}">+</button></div><button class="remove-line" data-cart-remove="${safe(p.id)}">Remove</button></div></div><strong>${money(p.price * line.quantity)}</strong></article>`;
     }).join("") : `<div class="empty-bag"><span>✳</span><p>Your bag is taking a little breather.</p><a href="./#shop" class="text-link">Explore the collection →</a></div>`;
   });
   const subtotal = cartSubtotal();
@@ -152,15 +143,14 @@ function renderHome() {
   const grid = document.querySelector("[data-product-grid]"); if (!grid) return;
   const homeOrder = ["s9", "bareesh", "s11"];
   const homeProducts = [...homeOrder.map(getProduct).filter(Boolean), ...products.filter(product => !homeOrder.includes(product.id))];
-  grid.innerHTML = homeProducts.map((item, index) => { const p = productForDisplay(item); return `<article class="product-card"><a class="card-image image-${safe(p.id)}" href="./product.html?id=${encodeURIComponent(p.id)}"><img src="${safe(p.image)}" alt="${safe(p.name)}" loading="lazy"><span class="card-number">0${index + 1}</span><span class="card-arrow">↗</span></a><div class="card-copy"><div class="card-meta"><span>${safe(p.eyebrow)}</span><span>${safe(p.size)}</span></div><h3><a href="./product.html?id=${encodeURIComponent(p.id)}">${safe(p.name)}</a></h3><p>${safe(p.subtitle)}</p><div class="card-bottom"><div>${p.compareAt ? `<s>${money(p.compareAt)}</s>` : ""}<strong>${money(p.price)}</strong></div><button class="quick-add" data-quick-add="${safe(p.id)}" aria-label="Add ${safe(p.name)} to bag">Add to cart</button></div></div></article>`; }).join("");
+  grid.innerHTML = homeProducts.map((p, index) => `<article class="product-card"><div class="card-image image-${safe(p.id)}"><img src="${safe(p.image)}" alt="${safe(p.name)}" loading="lazy"><span class="card-number">0${index + 1}</span></div><div class="card-copy"><div class="card-meta"><span>${safe(p.eyebrow)}</span><span>${safe(p.size)}</span></div><h3>${safe(p.name)}</h3><p>${safe(p.subtitle)}</p><div class="card-bottom"><div>${p.compareAt ? `<s>${money(p.compareAt)}</s>` : ""}<strong>${money(p.price)}</strong></div><button class="quick-add" data-quick-add="${safe(p.id)}" aria-label="Add ${safe(p.name)} to bag">Add to cart</button></div></div></article>`).join("");
   grid.querySelectorAll("[data-quick-add]").forEach(button => button.onclick = () => addToCart(button.dataset.quickAdd));
 }
 let carouselIndex = 1;
 let carouselTimer;
 function renderCarousel() {
   const image = document.querySelector("[data-carousel-image]"); if (!image) return;
-  const product = productForDisplay(products[carouselIndex]);
-  document.querySelector("[data-carousel-link]").href = `./product.html?id=${encodeURIComponent(product.id)}`;
+  const product = products[carouselIndex];
   image.src = product.image; image.alt = product.name;
   document.querySelector("[data-carousel-title]").textContent = product.name;
   document.querySelector("[data-carousel-price]").textContent = money(product.price);
@@ -181,40 +171,6 @@ function setupCarousel() {
   document.querySelector("[data-carousel-next]").onclick = () => setCarousel(carouselIndex + 1);
   renderCarousel();
   carouselTimer = setInterval(() => setCarousel(carouselIndex + 1), 5000);
-}
-function renderProduct() {
-  const view = document.querySelector("[data-product-detail]"); if (!view) return;
-  activeProduct = getProduct(new URLSearchParams(location.search).get("id"));
-  if (!activeProduct) { document.querySelector("[data-product-title]").textContent = "We couldn't find that product"; document.querySelector("[data-product-subtitle]").textContent = "Explore the collection to find your ritual."; return; }
-  const p = productForDisplay(activeProduct);
-  document.title = `${p.name} — Nutikals`;
-  document.querySelector("[data-product-name]").textContent = p.name;
-  document.querySelector("[data-product-eyebrow]").textContent = p.eyebrow;
-  document.querySelector("[data-product-title]").textContent = p.name;
-  document.querySelector("[data-product-subtitle]").textContent = p.subtitle;
-  document.querySelector("[data-product-price]").innerHTML = `${p.compareAt ? `<s>${money(p.compareAt)}</s>` : ""}<strong>${money(p.price)}</strong>`;
-  document.querySelector("[data-product-intro]").textContent = p.intro;
-  document.querySelector("[data-product-size]").textContent = p.size;
-  document.querySelector("[data-product-description]").textContent = p.description;
-  document.querySelector("[data-product-notes]").innerHTML = p.notes.map(note => `<li>${safe(note)}</li>`).join("");
-  const image = document.querySelector("[data-product-image]"); image.src = p.image; image.alt = p.name;
-  image.onerror = () => { if (image.src !== new URL(p.image, location.href).href) image.src = p.image; else image.hidden = true; };
-  const gallery = document.querySelector("[data-product-gallery]");
-  if (gallery) {
-    gallery.innerHTML = p.gallery.map((src, index) => `<button class="product-thumb${index === 0 ? " selected" : ""}" type="button" data-gallery-src="${safe(src)}" aria-label="View product image ${index + 1}"><img src="${safe(src)}" alt="" loading="lazy"></button>`).join("");
-    gallery.querySelectorAll("[data-gallery-src]").forEach(button => {
-      const thumb = button.querySelector("img");
-      thumb.onerror = () => { thumb.closest("button").hidden = true; };
-      button.onclick = () => {
-        gallery.querySelectorAll(".product-thumb").forEach(item => item.classList.remove("selected"));
-        button.classList.add("selected"); image.hidden = false; image.src = button.dataset.gallerySrc;
-        image.onerror = () => { image.src = p.image; };
-      };
-    });
-  }
-  document.querySelector("[data-add-product]").onclick = () => addToCart(p.id, detailQuantity);
-  document.querySelector("[data-qty-minus]").onclick = () => { detailQuantity = Math.max(1, detailQuantity - 1); document.querySelector("[data-qty]").textContent = detailQuantity; };
-  document.querySelector("[data-qty-plus]").onclick = () => { detailQuantity = Math.min(10, detailQuantity + 1); document.querySelector("[data-qty]").textContent = detailQuantity; };
 }
 function renderCheckoutSummary() {
   const container = document.querySelector("[data-summary-items]"); if (!container) return;
@@ -244,7 +200,7 @@ function renderPaymentInstructions(total) {
   document.querySelector("[data-jazzcash-amount]").textContent = money(total);
 }
 async function refreshStoreSettings() {
-  const response = await fetch("./api/store-settings", { cache: "no-store" });
+  const response = await fetch(`${API_BASE}/store-settings`, { cache: "no-store" });
   if (!response.ok) throw new Error("Store settings unavailable");
   const settings = await response.json();
   deliveryFee = Number(settings.deliveryFee);
@@ -267,7 +223,7 @@ function setupCheckout() {
     try {
       idempotencyKey = getCheckoutAttemptKey();
       await cartSync;
-      const response = await fetch("./api/orders", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(payload) });
+      const response = await fetch(`${API_BASE}/orders`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "We couldn't place that order. Please try again.");
       const name = fields.get("name").trim().split(/\s+/)[0];
@@ -291,11 +247,10 @@ window.addEventListener("focus", async () => {
   catch { /* The last known fee remains visible; the server validates every order total. */ }
 });
 
-fetch("./api/products").then(response => { if (!response.ok) throw new Error("Collection unavailable"); return response.json(); }).then(async data => {
+fetch(`${API_BASE}/products`).then(response => { if (!response.ok) throw new Error("Collection unavailable"); return response.json(); }).then(async data => {
   products = data;
   try { await refreshStoreSettings(); } catch { /* Keep the default fee while the store settings endpoint is unavailable. */ }
-  renderHome(); renderProduct(); setupCheckout(); setupCarousel(); return loadCart();
+  renderHome(); setupCheckout(); setupCarousel(); return loadCart();
 }).catch(() => {
   const grid = document.querySelector("[data-product-grid]"); if (grid) grid.innerHTML = '<p class="load-error">The collection could not load. Please refresh the page.</p>';
-  const title = document.querySelector("[data-product-title]"); if (title) title.textContent = "Please refresh to view this product.";
 });

@@ -1,3 +1,6 @@
 node_modules/
-orders/
 .env
+.env.*
+!.env.example
+*.log
+orders/
