@@ -10,7 +10,7 @@ const siteContent = require("./site-content");
 const FRONTEND_ROOT = path.join(__dirname, "..", "frontend");
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(FRONTEND_ROOT, "uploads");
 const CART_COOKIE = "nutikals_cart";
-const CART_SECRET = process.env.CART_COOKIE_SECRET || process.env.DB_PASSWORD || "";
+const CART_SECRET = process.env.CART_COOKIE_SECRET || "";
 const FREE_SHIPPING_THRESHOLD = 5000;
 let storeSettingsReady;
 let siteContentReady;
@@ -181,6 +181,26 @@ function signCartId(id) {
   return crypto.createHmac("sha256", CART_SECRET).update(id).digest("hex");
 }
 
+function signCheckoutAttempt(cartId, key) {
+  return crypto.createHmac("sha256", CART_SECRET).update(`checkout:${cartId}:${key}`).digest("hex");
+}
+
+function checkoutAttemptKey(req, cartId) {
+  const value = req.get("Idempotency-Key") || "";
+  const match = value.match(/^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.([a-f0-9]{64})$/i);
+  if (!match) {
+    console.error("Checkout attempt rejected: missing or malformed signed key.");
+    throw new HttpError(400, "A valid checkout attempt key is required. Refresh checkout and try again.");
+  }
+  const expected = Buffer.from(signCheckoutAttempt(cartId, match[1]), "hex");
+  const actual = Buffer.from(match[2], "hex");
+  if (!crypto.timingSafeEqual(expected, actual)) {
+    console.error("Checkout attempt rejected: key signature invalid or bound to another cart.");
+    throw new HttpError(400, "A valid checkout attempt key is required. Refresh checkout and try again.");
+  }
+  return match[1];
+}
+
 function cartCookieId(req) {
   if (!CART_SECRET) return null;
   const value = (req.headers.cookie || "").split(";").map(part => part.trim()).find(part => part.startsWith(`${CART_COOKIE}=`))?.slice(CART_COOKIE.length + 1);
@@ -265,9 +285,6 @@ async function sendOrderEmails(order) {
 
 function normalizeOrderRequest(body = {}, cartId, idempotencyKey) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "Invalid checkout request.");
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey || "")) {
-    throw new HttpError(400, "A valid checkout attempt key is required. Refresh checkout and try again.");
-  }
   const customer = body?.customer;
   if (!customer || typeof customer !== "object" || Array.isArray(customer)) throw new HttpError(400, "Please complete every checkout field.");
   const fields = [customer.name, customer.phone, customer.address, customer.city, customer.postalCode, customer.email, body.note];
@@ -404,6 +421,22 @@ api.get("/cart", async (req, res) => {
   const cartId = await getCartId(req, res);
   const result = await pool.query("SELECT product_id AS id, quantity FROM cart_items WHERE cart_id = $1 ORDER BY product_id", [cartId]);
   res.json({ items: result.rows });
+});
+
+api.post("/checkout-attempt", async (req, res) => {
+  try {
+    const cartId = await getCartId(req, res);
+    const key = req.body?.key;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key || "")) {
+      console.error("Checkout attempt key issue rejected: missing or malformed UUID.");
+      throw new HttpError(400, "A valid checkout attempt key is required. Refresh checkout and try again.");
+    }
+    res.json({ key: `${key}.${signCheckoutAttempt(cartId, key)}` });
+  } catch (error) {
+    const status = error instanceof HttpError ? error.status : 500;
+    if (status >= 500) console.error("Checkout attempt key issue failed:", error);
+    res.status(status).json({ ok: false, error: status >= 500 ? "Checkout is temporarily unavailable. Please try again." : error.message });
+  }
 });
 
 api.put("/cart", async (req, res) => {
@@ -550,7 +583,7 @@ api.use("/admin", adminRouter);
 api.post("/orders", async (req, res) => {
   try {
     const cartId = await getCartId(req, res);
-    const order = await createOrder(req.body, cartId, req.get("Idempotency-Key"));
+    const order = await createOrder(req.body, cartId, checkoutAttemptKey(req, cartId));
     if (order.replayed) return res.status(201).json({ ok: true, emailSent: order.emailSent, order: { id: order.id, total: order.total } });
     let emailSent = false;
     try { emailSent = await sendOrderEmails(order); }

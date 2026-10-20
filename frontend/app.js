@@ -223,7 +223,10 @@ function setupCheckout() {
     try {
       idempotencyKey = getCheckoutAttemptKey();
       await cartSync;
-      const response = await fetch(`${API_BASE}/orders`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify(payload) });
+      const attemptResponse = await fetch(`${API_BASE}/checkout-attempt`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: idempotencyKey }) });
+      const attempt = await attemptResponse.json();
+      if (!attemptResponse.ok) throw new Error(attempt.error || "Checkout is temporarily unavailable. Please try again.");
+      const response = await fetch(`${API_BASE}/orders`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": attempt.key }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "We couldn't place that order. Please try again.");
       const name = fields.get("name").trim().split(/\s+/)[0];

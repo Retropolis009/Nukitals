@@ -3,7 +3,7 @@
 <body class="checkout-screen">
   <header class="checkout-header"><a class="checkout-wordmark" href="./">Nutikals</a><a class="checkout-close" href="./" aria-label="Close checkout">&times;</a></header>
   <main class="checkout-page"><div class="checkout-layout">
-    <form class="checkout-form" data-checkout-form>
+    <form class="checkout-form" data-checkout-form method="post">
       <h1>Checkout</h1>
       <section class="checkout-card"><h2>Contact</h2><label class="field field-wide">Full name<input name="name" autocomplete="name" required maxlength="100" placeholder="Full name"></label><div class="form-grid"><label class="field">Mobile number<input name="phone" type="tel" autocomplete="tel" required maxlength="40" placeholder="0300 1234567"></label><label class="field">Email<input name="email" type="email" autocomplete="email" required maxlength="120" placeholder="Email address"></label></div></section>
       <section class="checkout-card"><h2>Delivery address</h2><label class="field field-wide">Full address<input name="address" autocomplete="street-address" required maxlength="500" placeholder="House / flat no., street, area"></label><div class="form-grid"><label class="field">City<input name="city" autocomplete="address-level2" required maxlength="100" placeholder="City"></label><label class="field">Postal code<input name="postalCode" autocomplete="postal-code" required maxlength="20" placeholder="Postal code"></label></div><label class="field field-wide note-field">Order note<textarea name="note" required maxlength="300" rows="2" placeholder="Landmark, preferred call time, anything we should know"></textarea></label></section>
