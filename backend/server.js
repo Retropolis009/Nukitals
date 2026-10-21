@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const crypto = require("node:crypto");
 const pool = require("./db");
 const productDetails = require("./products");
-const nodemailer = require("nodemailer");
+const mailer = require("./mailer");
 const siteContent = require("./site-content");
 
 const FRONTEND_ROOT = path.join(__dirname, "..", "frontend");
@@ -287,7 +287,7 @@ function normalizeOrderRequest(body = {}, cartId, idempotencyKey) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "Invalid checkout request.");
   const customer = body?.customer;
   if (!customer || typeof customer !== "object" || Array.isArray(customer)) throw new HttpError(400, "Please complete every checkout field.");
-  const fields = [customer.name, customer.phone, customer.address, customer.city, customer.postalCode, customer.email, body.note];
+  const fields = [customer.name, customer.phone, customer.address, customer.city, customer.postalCode, body.note];
   if (fields.some(value => typeof value !== "string")) throw new HttpError(400, "Please complete every checkout field.");
   const normalized = {
     customer: {
@@ -296,7 +296,7 @@ function normalizeOrderRequest(body = {}, cartId, idempotencyKey) {
       address: clean(customer.address, 500),
       city: clean(customer.city, 100),
       postalCode: clean(customer.postalCode, 20),
-      email: clean(customer.email, 120)
+      email: mailer.validEmail(clean(customer.email, 120)) ? clean(customer.email, 120) : ""
     },
     note: clean(body.note, 300),
     paymentMethod: body.paymentMethod
@@ -304,8 +304,6 @@ function normalizeOrderRequest(body = {}, cartId, idempotencyKey) {
   if (Object.values(normalized.customer).some(value => !value) || !normalized.note || !["cash_on_delivery", "jazzcash"].includes(normalized.paymentMethod)) {
     throw new HttpError(400, "Please complete every checkout field.");
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized.customer.email)) throw new HttpError(400, "Enter a valid email address.");
-
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 12) throw new HttpError(400, "Your cart is empty or invalid.");
   normalized.items = body.items.map(line => ({ id: clean(line?.id, 40), quantity: Number(line?.quantity) }));
   if (normalized.items.some(line => !line.id || !Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 10) || new Set(normalized.items.map(line => line.id)).size !== normalized.items.length) {
@@ -322,6 +320,60 @@ async function findIdempotentOrder(db, idempotencyKey, requestHash) {
   const existing = result.rows[0];
   if (existing.request_hash !== requestHash) throw new HttpError(409, "This checkout attempt was already used with different details. Start a new checkout attempt.");
   return { id: existing.id, total: Number(existing.total), emailSent: Boolean(existing.email_sent), replayed: true };
+}
+
+const activeEmailJobs = new Set();
+
+async function deliverOrderEmails(orderId, providedOrder) {
+  if (!mailer.config || activeEmailJobs.has(orderId)) return;
+  activeEmailJobs.add(orderId);
+  try {
+    let order = providedOrder;
+    if (!order) {
+      const result = await pool.query(`SELECT id, customer_name, customer_phone, customer_email, delivery_address,
+        delivery_city, delivery_postal_code, payment_method, subtotal, shipping, total,
+        customer_email_sent_at, admin_email_sent_at FROM orders WHERE id = $1`, [orderId]);
+      if (!result.rowCount) return;
+      const row = result.rows[0];
+      const items = await pool.query("SELECT product_name AS name, unit_price AS price, quantity, line_total AS \"lineTotal\" FROM order_items WHERE order_id = $1 ORDER BY id", [orderId]);
+      order = {
+        id: row.id, customer: { name: row.customer_name, phone: row.customer_phone, email: row.customer_email || "", address: row.delivery_address, city: row.delivery_city, postalCode: row.delivery_postal_code || "" },
+        paymentMethod: row.payment_method, subtotal: Number(row.subtotal), shipping: Number(row.shipping), total: Number(row.total), items: items.rows,
+        customerEmailSentAt: row.customer_email_sent_at, adminEmailSentAt: row.admin_email_sent_at
+      };
+    }
+    const claimed = await pool.query(`UPDATE orders SET email_attempts = email_attempts + 1
+      WHERE id = $1 AND email_attempts < 3 AND (customer_email_sent_at IS NULL OR admin_email_sent_at IS NULL)
+      RETURNING email_attempts`, [orderId]);
+    if (!claimed.rowCount) return;
+    const result = await mailer.sendOrderEmails(order);
+    const updates = [];
+    if (result.customerSent) updates.push("customer_email_sent_at = now()");
+    if (result.adminSent) updates.push("admin_email_sent_at = now()");
+    if (updates.length) {
+      const fullySent = (order.customer.email ? result.customerSent || Boolean(order.customerEmailSentAt) : false) && (result.adminSent || Boolean(order.adminEmailSentAt));
+      updates.push(`email_sent = ${fullySent ? "true" : "false"}`);
+      await pool.query(`UPDATE orders SET ${updates.join(", ")} WHERE id = $1`, [orderId]);
+    }
+    for (const error of result.errors) console.error(`Order email failed for ${orderId}: ${error.code || "SMTP_ERROR"}`);
+  } catch (error) {
+    console.error(`Order email failed for ${orderId}: ${error.code || "MAIL_ERROR"}`);
+  } finally {
+    activeEmailJobs.delete(orderId);
+  }
+}
+
+async function retryRecentOrderEmails() {
+  if (!mailer.config) return;
+  try {
+    const pending = await pool.query(`SELECT id FROM orders
+      WHERE created_at >= now() - interval '24 hours' AND email_attempts < 3
+        AND (customer_email_sent_at IS NULL OR admin_email_sent_at IS NULL)
+      ORDER BY created_at`);
+    for (const row of pending.rows) await deliverOrderEmails(row.id);
+  } catch (error) {
+    console.error(`Order email retry scan failed: ${error.code || "DATABASE_ERROR"}`);
+  }
 }
 
 async function createOrder(body = {}, cartId, idempotencyKey) {
@@ -585,12 +637,9 @@ api.post("/orders", async (req, res) => {
     const cartId = await getCartId(req, res);
     const order = await createOrder(req.body, cartId, checkoutAttemptKey(req, cartId));
     if (order.replayed) return res.status(201).json({ ok: true, emailSent: order.emailSent, order: { id: order.id, total: order.total } });
-    let emailSent = false;
-    try { emailSent = await sendOrderEmails(order); }
-    catch (error) { console.error(`Order email failed for ${order.id}:`, error); }
-    try { await pool.query("UPDATE orders SET email_sent = $2 WHERE id = $1", [order.id, emailSent]); }
-    catch (error) { console.error(`Could not save email status for order ${order.id}:`, error); }
-    res.status(201).json({ ok: true, emailSent, order: { id: order.id, total: order.total } });
+    try { void deliverOrderEmails(order.id, order); }
+    catch (error) { console.error(`Order email failed for ${order.id}: ${error.code || "MAIL_ERROR"}`); }
+    res.status(201).json({ ok: true, emailSent: false, order: { id: order.id, total: order.total } });
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
     if (status >= 500) console.error("Order creation failed:", error);
@@ -611,4 +660,9 @@ api.use((error, req, res, next) => {
 });
 app.use(BASE_PATH, api);
 
-app.listen(process.env.PORT || 3000, () => console.log("Nutikals API is running."));
+const emailRetryTimer = setInterval(() => { void retryRecentOrderEmails(); }, 10 * 60 * 1000);
+emailRetryTimer.unref();
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Nutikals API is running.");
+  void retryRecentOrderEmails();
+});
